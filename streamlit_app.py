@@ -331,7 +331,13 @@ elif st.session_state.page == "stock":
             info   = stock_client.get_info(ticker)
             df_raw = stock_client.get_history(ticker, period=period)
         except FinSightError as exc:
-            st.error(f"**Data Error:** {exc}")
+            err = str(exc)
+            is_rate = any(k in err.lower() for k in ["rate limit", "too many requests", "429"])
+            if is_rate:
+                msg = "Yahoo Finance rate limit hit. Wait 30-60s then click Refresh Data in the sidebar."
+                st.warning(f"⚠️ Rate Limited: {msg}")
+            else:
+                st.error(f"Data Error: {err}")
             st.stop()
 
     df      = add_indicators(df_raw)
