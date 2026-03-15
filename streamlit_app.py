@@ -25,6 +25,11 @@ with st.sidebar:
     st.markdown(f"## 📈 {settings.app_title}")
     st.caption(f"v{settings.app_version}")
     st.divider()
+    st.page_link("streamlit_app.py",         label="🏠 Home",            icon="🏠")
+    st.page_link("pages/1_Stock_Analysis.py", label="Stock Analysis",    icon="📊")
+    st.page_link("pages/2_Document_QA.py",    label="Document Q&A",      icon="📄")
+    st.page_link("pages/3_Chat.py",           label="AI Chat",           icon="💬")
+    st.divider()
     st.caption(
         "⚠️ For informational purposes only. "
         "Not investment advice."
@@ -38,9 +43,27 @@ st.markdown(
 )
 
 col1, col2, col3 = st.columns(3)
+
 with col1:
-    st.info("### 📊 Stock Analysis\nTechnical indicators, fundamental metrics, and AI-generated analysis for any ticker.")
+    st.info(
+        "**📊 Stock Analysis**\n\n"
+        "Technical indicators, fundamental metrics, "
+        "and AI-generated analysis for any ticker."
+    )
+    st.page_link("pages/1_Stock_Analysis.py", label="Open Stock Analysis →", icon="📊")
+
 with col2:
-    st.info("### 📄 Document Q&A\nUpload 10-K, 10-Q, or earnings transcripts and ask questions grounded in the text.")
+    st.info(
+        "**📄 Document Q&A**\n\n"
+        "Upload 10-K, 10-Q, or earnings transcripts "
+        "and ask questions grounded in the text."
+    )
+    st.page_link("pages/2_Document_QA.py", label="Open Document Q&A →", icon="📄")
+
 with col3:
-    st.info("### 💬 AI Chat\nConversational financial assistant powered by Claude. Ask anything about markets.")
+    st.info(
+        "**💬 AI Chat**\n\n"
+        "Conversational financial assistant powered "
+        "by Claude. Ask anything about markets."
+    )
+    st.page_link("pages/3_Chat.py", label="Open AI Chat →", icon="💬")
