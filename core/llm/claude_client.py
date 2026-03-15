@@ -1,18 +1,13 @@
 """
 FinSight — Claude API Client
 ================================
-Single-responsibility wrapper around the Anthropic Python SDK.
+Stateless wrapper around the Anthropic Messages API.
 
-Responsibilities:
-- Construct and validate Messages API requests.
-- Retry on transient rate-limit errors with exponential back-off.
-- Inject RAG context into the user turn without polluting call sites.
-- Build structured stock-analysis prompts with grounding instructions
-  to minimise hallucination.
-
-This module owns the system prompt and all prompt engineering.
-UI layers call :meth:`ClaudeClient.stream` or :meth:`ClaudeClient.complete`
-and never construct raw API payloads themselves.
+Responsibilities (Single Responsibility Principle):
+- Own all prompt engineering (system prompt + templates).
+- Handle API retries, rate limits, and streaming.
+- Inject RAG context without polluting call sites.
+- Raise typed LLM exceptions — never bare anthropic SDK errors.
 
 Usage::
 
@@ -21,7 +16,6 @@ Usage::
     for chunk in client.stream([{"role": "user", "content": "Explain DCF"}]):
         print(chunk, end="", flush=True)
 """
-
 from __future__ import annotations
 
 import logging
@@ -40,99 +34,115 @@ from core.exceptions import (
 
 log = logging.getLogger(__name__)
 
-# ── System prompt ─────────────────────────────────────────────
-# Grounding instructions are included explicitly to reduce hallucination.
-# The phrase "do not fabricate" is more reliable than "don't make up".
-
+# ── System Prompt ─────────────────────────────────────────────
 _SYSTEM_PROMPT = """\
-You are FinSight, a senior AI financial analyst.
+You are FinSight, a senior AI financial analyst assistant.
 
 ## Capabilities
-- Technical analysis: interpret price action, momentum indicators, and chart patterns.
-- Fundamental analysis: evaluate valuation multiples, profitability, and balance-sheet health.
-- Document analysis: extract insights from SEC filings, earnings transcripts, and research reports.
-- Financial education: explain complex concepts clearly for both retail and institutional audiences.
+- Technical analysis: price action, momentum indicators, chart patterns.
+- Fundamental analysis: valuation multiples, profitability, balance-sheet health.
+- Document analysis: SEC filings, earnings transcripts, research reports.
+- Financial education: clear explanations for retail and institutional audiences.
 
 ## Strict Rules
-1. **Ground every claim in the data provided.** Do not fabricate prices, ratios, or dates.
-2. If the provided data is insufficient to answer, say so explicitly rather than guessing.
-3. Distinguish analysis from opinion: use phrases like "the data suggests" or "one interpretation is."
-4. Always append a one-sentence risk disclaimer to analysis that could influence investment decisions.
-5. Never recommend specific buy, sell, or hold actions on individual securities.
-6. Format responses with clear Markdown headings and bullet points for readability.\
+1. Ground every claim in the data provided. Do not fabricate prices, ratios, or dates.
+2. If data is insufficient, say so explicitly rather than guessing.
+3. Distinguish analysis from opinion: use "the data suggests" or "one interpretation is."
+4. Format responses with clear Markdown headings and bullet points.
+5. Append a one-sentence risk disclaimer to any analysis that could influence investment decisions.
+6. Never recommend specific buy, sell, or hold actions on individual securities.\
 """
 
-# ── Prompt templates ──────────────────────────────────────────
+# ── Type aliases ──────────────────────────────────────────────
+MessageList = list[dict[str, str]]
 
-def _build_stock_analysis_prompt(
+
+# ── Prompt builders (pure functions — easy to unit-test) ──────
+
+def _build_analysis_prompt(
     ticker: str,
     fundamentals: dict[str, Any],
     signals: dict[str, str],
     bias: str,
     period: str,
 ) -> str:
-    """Construct the stock analysis user message.
+    """Build the structured stock-analysis user message.
 
     Args:
         ticker:       Ticker symbol.
-        fundamentals: Dict of fundamental metrics from :class:`~core.data.stock_client.StockInfo`.
-        signals:      Technical signals from :func:`~core.analysis.technical.get_signals`.
-        bias:         Overall signal bias from :func:`~core.analysis.technical.signal_summary`.
-        period:       The time period of the price history (e.g. ``"1y"``).
+        fundamentals: Subset of :class:`~core.data.stock_client.StockInfo` fields.
+        signals:      Output of :func:`~core.analysis.technical.get_signals`.
+        bias:         Output of :func:`~core.analysis.technical.signal_summary`.
+        period:       Price-history period (e.g. ``"1y"``).
 
     Returns:
-        A formatted string suitable for the ``"user"`` role in the Messages API.
+        Formatted string for the ``"user"`` role.
     """
     def _fmt(v: Any) -> str:
-        if v is None:
-            return "N/A"
-        if isinstance(v, float):
-            return f"{v:,.2f}"
+        if v is None: return "N/A"
+        if isinstance(v, float): return f"{v:,.2f}"
         if isinstance(v, int) and v > 1_000_000:
             if v >= 1e12: return f"${v/1e12:.2f}T"
             if v >= 1e9:  return f"${v/1e9:.2f}B"
-            if v >= 1e6:  return f"${v/1e6:.2f}M"
+            return f"${v/1e6:.2f}M"
         return str(v)
 
-    fund_lines = "\n".join(
+    fund_md = "\n".join(
         f"- **{k.replace('_', ' ').title()}:** {_fmt(v)}"
         for k, v in fundamentals.items()
     )
-    sig_lines = "\n".join(
-        f"- **{k}:** {v}" for k, v in signals.items()
-    )
+    sig_md = "\n".join(f"- **{k}:** {v}" for k, v in signals.items())
 
     return (
-        f"Please analyse **{ticker}** using the data below.\n\n"
-        f"### Fundamental Data\n{fund_lines}\n\n"
-        f"### Technical Signals ({period} period)\n{sig_lines}\n"
+        f"Analyse **{ticker}** using the data provided below.\n\n"
+        f"### Fundamental Data\n{fund_md}\n\n"
+        f"### Technical Signals ({period})\n{sig_md}\n"
         f"**Aggregate Bias:** {bias}\n\n"
         "### Required Output Structure\n"
-        "1. **Company Overview** — one paragraph max.\n"
+        "1. **Company Overview** — one paragraph.\n"
         "2. **Fundamental Analysis** — valuation vs. sector peers, red flags.\n"
-        "3. **Technical Analysis** — trend direction, momentum, key price levels.\n"
+        "3. **Technical Analysis** — trend, momentum, key price levels.\n"
         "4. **Key Risks** — 3–5 bullet points.\n"
         "5. **Summary** — 2–3 sentences.\n"
         "6. **Risk Disclaimer** — one sentence.\n\n"
-        "_Use only the data provided above. If a metric is N/A, note its absence._"
+        "_Use only the data above. Note any N/A metrics explicitly._"
     )
+
+
+def _inject_context(messages: MessageList, context: str) -> MessageList:
+    """Prepend RAG context to the last user turn (non-mutating).
+
+    Args:
+        messages: Original conversation history.
+        context:  Concatenated retrieval results.
+
+    Returns:
+        New :data:`MessageList` with context prepended to the last user message.
+    """
+    msgs = list(messages)
+    if msgs and msgs[-1].get("role") == "user":
+        msgs[-1] = {
+            "role": "user",
+            "content": (
+                "## Retrieved Context (ground your answer in this)\n\n"
+                f"{context}\n\n---\n\n"
+                f"## Question\n\n{msgs[-1]['content']}"
+            ),
+        }
+    return msgs
 
 
 # ── Client ────────────────────────────────────────────────────
 
-MessageList = list[dict[str, str]]
-
-
 class ClaudeClient:
-    """Stateless wrapper around the Anthropic Messages API.
+    """Stateless Anthropic Messages API wrapper with retry and streaming.
 
-    Designed to be instantiated once per Streamlit session and stored
-    in ``st.session_state``.  All methods are synchronous and thread-safe
-    (the underlying ``httpx`` client handles connection pooling).
+    Thread-safe (httpx handles connection pooling internally).
+    Instantiate once per Streamlit session and store in session_state.
 
     Args:
-        api_key: Anthropic API key.  Defaults to ``settings.api_key``.
-        model:   Claude model identifier.  Defaults to ``settings.claude_model``.
+        api_key: Override the key from ``settings.api_key``.
+        model:   Override the model from ``settings.claude_model``.
     """
 
     def __init__(
@@ -140,44 +150,37 @@ class ClaudeClient:
         api_key: str | None = None,
         model:   str | None = None,
     ) -> None:
-        resolved_key = api_key or settings.api_key
-        self._client = anthropic.Anthropic(api_key=resolved_key)
+        self._client = anthropic.Anthropic(api_key=api_key or settings.api_key)
         self._model  = model or settings.claude_model
         log.info("claude_client_init model=%s", self._model)
 
-    # ── Internal helpers ──────────────────────────────────────
+    # ── Private ───────────────────────────────────────────────
 
-    def _create_with_retry(
-        self,
-        messages: MessageList,
-        stream: bool = False,
-    ) -> Any:
-        """Call the Messages API with exponential-backoff retry on 429s.
+    def _call(self, messages: MessageList, stream: bool = False) -> Any:
+        """Call the Messages API with exponential-backoff retry on 429.
 
         Args:
-            messages: Conversation history in OpenAI-compatible format.
-            stream:   If ``True``, return a streaming context manager.
+            messages: Conversation history.
+            stream:   Return a streaming context manager when ``True``.
 
         Returns:
-            An :class:`anthropic.types.Message` (non-stream) or a
-            streaming context manager (stream=True).
+            :class:`anthropic.types.Message` or streaming context manager.
 
         Raises:
-            LLMRateLimitError:         After exhausting retries on 429.
-            ContextWindowExceededError: On ``invalid_request_error`` with
-                                        "prompt is too long" in the message.
-            LLMError:                  For all other API failures.
+            LLMRateLimitError:         HTTP 429 after retries.
+            ContextWindowExceededError: Prompt too long.
+            LLMError:                  Any other API failure.
         """
         max_attempts = 4
+        kwargs: dict[str, Any] = dict(
+            model      = self._model,
+            max_tokens = settings.max_tokens,
+            temperature= settings.temperature,
+            system     = _SYSTEM_PROMPT,
+            messages   = messages,
+        )
         for attempt in range(1, max_attempts + 1):
             try:
-                kwargs: dict[str, Any] = dict(
-                    model      = self._model,
-                    max_tokens = settings.max_tokens,
-                    temperature= settings.temperature,
-                    system     = _SYSTEM_PROMPT,
-                    messages   = messages,
-                )
                 if stream:
                     return self._client.messages.stream(**kwargs)
                 return self._client.messages.create(**kwargs)
@@ -186,10 +189,7 @@ class ClaudeClient:
                 if attempt == max_attempts:
                     raise LLMRateLimitError() from exc
                 wait = 2 ** attempt
-                log.warning(
-                    "llm_rate_limit attempt=%d/%d wait=%ds",
-                    attempt, max_attempts, wait,
-                )
+                log.warning("llm_rate_limit attempt=%d/%d wait=%ds", attempt, max_attempts, wait)
                 time.sleep(wait)
 
             except anthropic.BadRequestError as exc:
@@ -203,7 +203,7 @@ class ClaudeClient:
             except anthropic.APIConnectionError as exc:
                 raise LLMError(f"Connection error: {exc}") from exc
 
-        raise LLMError("Unreachable — all retry attempts failed")  # pragma: no cover
+        raise LLMError("All retry attempts exhausted")  # pragma: no cover
 
     # ── Public API ────────────────────────────────────────────
 
@@ -212,41 +212,35 @@ class ClaudeClient:
         messages: MessageList,
         extra_context: str | None = None,
     ) -> str:
-        """Non-streaming single-turn completion.
+        """Non-streaming completion.
 
         Args:
             messages:      Conversation in ``[{"role": ..., "content": ...}]`` format.
-            extra_context: RAG-retrieved text to prepend to the last user turn.
+            extra_context: RAG context to prepend to the last user turn.
 
         Returns:
-            The assistant's full response as a plain string.
+            Assistant's full response as a plain string.
 
         Raises:
-            LLMRateLimitError:         Rate-limited after retries.
-            ContextWindowExceededError: Prompt too long.
-            LLMError:                  Other API failures.
+            LLMRateLimitError, ContextWindowExceededError, LLMError.
         """
         if extra_context:
             messages = _inject_context(messages, extra_context)
 
         log.info("llm_complete n_messages=%d", len(messages))
-        response: anthropic.types.Message = self._create_with_retry(messages)
-
+        resp: anthropic.types.Message = self._call(messages)
         log.info(
-            "llm_complete_done input_tokens=%d output_tokens=%d",
-            response.usage.input_tokens,
-            response.usage.output_tokens,
+            "llm_complete_done in=%d out=%d",
+            resp.usage.input_tokens, resp.usage.output_tokens,
         )
-        return response.content[0].text
+        return resp.content[0].text
 
     def stream(
         self,
         messages: MessageList,
         extra_context: str | None = None,
     ) -> Generator[str, None, None]:
-        """Streaming completion — yields text deltas as they arrive.
-
-        Designed for direct use with ``st.write_stream(client.stream(msgs))``.
+        """Streaming completion — yields text deltas for ``st.write_stream``.
 
         Args:
             messages:      Conversation history.
@@ -256,17 +250,15 @@ class ClaudeClient:
             Incremental text strings from the model.
 
         Raises:
-            LLMRateLimitError: Rate-limited after retries.
-            LLMError:          Other API failures.
+            LLMRateLimitError, ContextWindowExceededError, LLMError.
         """
         if extra_context:
             messages = _inject_context(messages, extra_context)
 
         log.info("llm_stream_start n_messages=%d", len(messages))
         try:
-            with self._create_with_retry(messages, stream=True) as stream_ctx:
-                for text in stream_ctx.text_stream:
-                    yield text
+            with self._call(messages, stream=True) as ctx:
+                yield from ctx.text_stream
         except (LLMError, LLMRateLimitError, ContextWindowExceededError):
             raise
         except anthropic.APIError as exc:
@@ -280,22 +272,20 @@ class ClaudeClient:
         signal_summary: str,
         period: str,
     ) -> MessageList:
-        """Build a structured stock-analysis message list.
+        """Build a stock-analysis :data:`MessageList`.
 
-        Separates prompt-construction from call-site logic so that
-        prompt engineering can evolve independently of the UI layer.
+        Separates prompt construction from call-site logic so prompt
+        engineering can evolve without touching the UI layer.
 
         Args:
             ticker:         Ticker symbol.
-            info:           Dict representation of a
-                            :class:`~core.data.stock_client.StockInfo` instance.
+            info:           Dict of :class:`~core.data.stock_client.StockInfo`.
             signals:        Output of :func:`~core.analysis.technical.get_signals`.
             signal_summary: Output of :func:`~core.analysis.technical.signal_summary`.
-            period:         Price-history period string (e.g. ``"1y"``).
+            period:         Price-history period string.
 
         Returns:
-            A single-element :data:`MessageList` ready for :meth:`stream`
-            or :meth:`complete`.
+            Single-element :data:`MessageList` ready for :meth:`stream`.
         """
         fundamentals = {
             k: info.get(k)
@@ -305,43 +295,13 @@ class ClaudeClient:
                 "fifty_two_week_high", "fifty_two_week_low", "current_price",
             )
         }
-        content = _build_stock_analysis_prompt(
-            ticker=ticker,
-            fundamentals=fundamentals,
-            signals=signals,
-            bias=signal_summary,
-            period=period,
-        )
-        return [{"role": "user", "content": content}]
-
-
-# ── Module-level helpers ──────────────────────────────────────
-
-def _inject_context(messages: MessageList, context: str) -> MessageList:
-    """Prepend RAG-retrieved context to the last user message.
-
-    Creates a shallow copy of *messages* so the original list is not
-    mutated.  Only modifies the last message if its role is ``"user"``.
-
-    Args:
-        messages: Original conversation history.
-        context:  Concatenated retrieval results from the RAG pipeline.
-
-    Returns:
-        A new :data:`MessageList` with context prepended to the last turn.
-    """
-    msgs = list(messages)
-    if not msgs:
-        return msgs
-    last = msgs[-1]
-    if last.get("role") == "user":
-        msgs[-1] = {
+        return [{
             "role": "user",
-            "content": (
-                "## Retrieved Context (ground your answer in this)\n\n"
-                f"{context}\n\n"
-                "---\n\n"
-                f"## Question\n\n{last['content']}"
+            "content": _build_analysis_prompt(
+                ticker=ticker,
+                fundamentals=fundamentals,
+                signals=signals,
+                bias=signal_summary,
+                period=period,
             ),
-        }
-    return msgs
+        }]
