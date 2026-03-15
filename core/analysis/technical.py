@@ -1,143 +1,219 @@
 """
-FinSight — Technical Analysis
-================================
-Adds common technical indicators to an OHLCV DataFrame.
-All functions are pure (no side effects) and return a new DataFrame.
+FinSight — Technical Analysis Engine
+========================================
+Pure, side-effect-free functions that compute technical indicators and
+derive actionable signals from OHLCV data.
 
-Indicators included (Phase 1):
-  - SMA  (20, 50, 200)
-  - EMA  (12, 26)
-  - MACD + Signal + Histogram
-  - RSI  (14)
-  - Bollinger Bands (20, 2σ)
-  - ATR  (14)
-  - Volume SMA (20)
+All functions:
+- Return new objects; they never mutate their inputs.
+- Are fully type-annotated.
+- Carry Google-style docstrings.
+- Validate their inputs defensively and raise ``ValueError`` on invalid data.
 
-Usage:
-    from core.analysis.technical import add_indicators, get_signals
-    df_with_indicators = add_indicators(raw_df)
-    signals = get_signals(df_with_indicators)
+Indicators (Phase 1):
+    Trend:     SMA(20, 50, 200), EMA(12, 26)
+    Momentum:  MACD + Signal + Histogram, RSI(14)
+    Volatility: Bollinger Bands(20, 2σ), ATR(14)
+    Volume:    Volume SMA(20)
+
+Usage::
+
+    from core.analysis.technical import add_indicators, get_signals, signal_summary
+    df  = add_indicators(raw_ohlcv_df)
+    sig = get_signals(df)
+    print(signal_summary(sig))  # "BULLISH" | "BEARISH" | "MIXED" | "NEUTRAL"
 """
+
+from __future__ import annotations
+
+import logging
 
 import pandas as pd
 import ta
+import ta.momentum
+import ta.trend
+import ta.volatility
 
-from core.logger import get_logger
+log = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
+# ── Type aliases ──────────────────────────────────────────────
+SignalMap = dict[str, str]
+"""Mapping of indicator name → ``"BULLISH" | "BEARISH" | "NEUTRAL"``."""
+
+_VALID_SIGNALS = frozenset({"BULLISH", "BEARISH", "NEUTRAL"})
+_REQUIRED_COLS = frozenset({"Open", "High", "Low", "Close", "Volume"})
+
+
+def _validate_ohlcv(df: pd.DataFrame) -> None:
+    """Assert that *df* has the expected OHLCV columns and is non-empty.
+
+    Args:
+        df: DataFrame to validate.
+
+    Raises:
+        ValueError: If required columns are missing or *df* is empty.
+    """
+    if df.empty:
+        raise ValueError("OHLCV DataFrame is empty — cannot compute indicators.")
+    missing = _REQUIRED_COLS - set(df.columns)
+    if missing:
+        raise ValueError(f"DataFrame missing required columns: {missing}")
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute technical indicators and append them as new columns.
+    """Compute technical indicators and append them as new columns.
 
     Args:
-        df: OHLCV DataFrame with columns [Open, High, Low, Close, Volume].
+        df: OHLCV DataFrame with columns
+            ``[Open, High, Low, Close, Volume]`` and a DatetimeIndex.
+            The DataFrame is **not** mutated.
 
     Returns:
-        A copy of *df* with indicator columns appended.
-    """
-    df = df.copy()
+        A copy of *df* with the following additional columns:
 
-    close = df["Close"].squeeze()
-    high  = df["High"].squeeze()
-    low   = df["Low"].squeeze()
-    vol   = df["Volume"].squeeze()
+        ============  ===========================================
+        Column        Description
+        ============  ===========================================
+        sma_20        Simple moving average, 20-period
+        sma_50        Simple moving average, 50-period
+        sma_200       Simple moving average, 200-period
+        ema_12        Exponential moving average, 12-period
+        ema_26        Exponential moving average, 26-period
+        macd          MACD line (EMA12 − EMA26)
+        macd_signal   Signal line (9-period EMA of MACD)
+        macd_hist     MACD histogram (MACD − Signal)
+        rsi_14        Relative Strength Index, 14-period
+        bb_upper      Bollinger Band upper (SMA20 + 2σ)
+        bb_middle     Bollinger Band middle (SMA20)
+        bb_lower      Bollinger Band lower (SMA20 − 2σ)
+        bb_pct        BB %B — price position within bands [0, 1]
+        atr_14        Average True Range, 14-period
+        vol_sma_20    Volume simple moving average, 20-period
+        ============  ===========================================
+
+    Raises:
+        ValueError: If *df* is empty or missing required columns.
+    """
+    _validate_ohlcv(df)
+    out = df.copy()
+
+    # Squeeze in case yfinance returns a single-column MultiIndex
+    close = out["Close"].squeeze()
+    high  = out["High"].squeeze()
+    low   = out["Low"].squeeze()
+    vol   = out["Volume"].squeeze()
 
     # ── Trend ─────────────────────────────────────────────────
-    df["sma_20"]  = ta.trend.sma_indicator(close, window=20)
-    df["sma_50"]  = ta.trend.sma_indicator(close, window=50)
-    df["sma_200"] = ta.trend.sma_indicator(close, window=200)
-    df["ema_12"]  = ta.trend.ema_indicator(close, window=12)
-    df["ema_26"]  = ta.trend.ema_indicator(close, window=26)
+    out["sma_20"]  = ta.trend.sma_indicator(close, window=20)
+    out["sma_50"]  = ta.trend.sma_indicator(close, window=50)
+    out["sma_200"] = ta.trend.sma_indicator(close, window=200)
+    out["ema_12"]  = ta.trend.ema_indicator(close, window=12)
+    out["ema_26"]  = ta.trend.ema_indicator(close, window=26)
 
-    macd_obj = ta.trend.MACD(close)
-    df["macd"]        = macd_obj.macd()
-    df["macd_signal"] = macd_obj.macd_signal()
-    df["macd_hist"]   = macd_obj.macd_diff()
+    macd = ta.trend.MACD(close)
+    out["macd"]        = macd.macd()
+    out["macd_signal"] = macd.macd_signal()
+    out["macd_hist"]   = macd.macd_diff()
 
     # ── Momentum ──────────────────────────────────────────────
-    df["rsi_14"] = ta.momentum.rsi(close, window=14)
+    out["rsi_14"] = ta.momentum.rsi(close, window=14)
 
     # ── Volatility ────────────────────────────────────────────
     bb = ta.volatility.BollingerBands(close, window=20, window_dev=2)
-    df["bb_upper"]  = bb.bollinger_hband()
-    df["bb_middle"] = bb.bollinger_mavg()
-    df["bb_lower"]  = bb.bollinger_lband()
-    df["bb_pct"]    = bb.bollinger_pband()   # % position within bands
+    out["bb_upper"]  = bb.bollinger_hband()
+    out["bb_middle"] = bb.bollinger_mavg()
+    out["bb_lower"]  = bb.bollinger_lband()
+    out["bb_pct"]    = bb.bollinger_pband()
 
-    df["atr_14"] = ta.volatility.average_true_range(high, low, close, window=14)
+    out["atr_14"] = ta.volatility.average_true_range(high, low, close, window=14)
 
     # ── Volume ────────────────────────────────────────────────
-    df["vol_sma_20"] = ta.trend.sma_indicator(vol.astype(float), window=20)
+    out["vol_sma_20"] = ta.trend.sma_indicator(vol.astype(float), window=20)
 
-    logger.debug("indicators_added", columns=list(df.columns))
-    return df
+    log.debug("indicators_added n_cols=%d n_rows=%d", len(out.columns), len(out))
+    return out
 
 
-def get_signals(df: pd.DataFrame) -> dict[str, str]:
-    """
-    Generate human-readable buy / sell / neutral signals from
-    the last completed candle.
+def get_signals(df: pd.DataFrame) -> SignalMap:
+    """Derive actionable signals from the most recent bar in *df*.
+
+    Each signal uses a well-known rule:
+
+    - **RSI**: oversold (<30) → BULLISH; overbought (>70) → BEARISH.
+    - **MACD**: histogram positive → BULLISH; negative → BEARISH.
+    - **SMA_50 / SMA_200**: price above → BULLISH; below → BEARISH.
+    - **BB**: price in lower 20% of band → BULLISH; upper 80% → BEARISH.
+
+    Args:
+        df: DataFrame returned by :func:`add_indicators`.
 
     Returns:
-        A dict mapping signal_name → "BULLISH" | "BEARISH" | "NEUTRAL".
+        A :data:`SignalMap` mapping indicator name to signal string.
+        Returns an empty dict if *df* is empty or no indicator columns
+        are present.
     """
     if df.empty:
+        log.debug("get_signals called on empty DataFrame — returning {}")
         return {}
 
-    last = df.iloc[-1]
-    signals: dict[str, str] = {}
+    last: pd.Series = df.iloc[-1]
+    signals: SignalMap = {}
+
+    def _safe(col: str) -> float | None:
+        """Return the scalar value of *col* in the last row, or None."""
+        val = last.get(col)
+        try:
+            return float(val) if val is not None and not pd.isna(val) else None
+        except (TypeError, ValueError):
+            return None
 
     # RSI
-    rsi = last.get("rsi_14")
-    if rsi is not None:
-        if rsi < 30:
-            signals["RSI"] = "BULLISH"   # oversold
-        elif rsi > 70:
-            signals["RSI"] = "BEARISH"   # overbought
-        else:
-            signals["RSI"] = "NEUTRAL"
+    if (rsi := _safe("rsi_14")) is not None:
+        signals["RSI"] = "BULLISH" if rsi < 30 else ("BEARISH" if rsi > 70 else "NEUTRAL")
 
-    # MACD crossover
-    macd_hist = last.get("macd_hist")
-    if macd_hist is not None:
-        signals["MACD"] = "BULLISH" if macd_hist > 0 else "BEARISH"
+    # MACD histogram
+    if (hist := _safe("macd_hist")) is not None:
+        signals["MACD"] = "BULLISH" if hist > 0 else "BEARISH"
 
-    # Price vs SMAs
-    close = last.get("Close")
-    sma_50 = last.get("sma_50")
-    sma_200 = last.get("sma_200")
-    if close is not None and sma_50 is not None:
-        signals["SMA_50"]  = "BULLISH" if close > sma_50  else "BEARISH"
-    if close is not None and sma_200 is not None:
-        signals["SMA_200"] = "BULLISH" if close > sma_200 else "BEARISH"
+    # Price vs SMA 50 / 200
+    close = _safe("Close")
+    for label, col in [("SMA_50", "sma_50"), ("SMA_200", "sma_200")]:
+        if close is not None and (sma := _safe(col)) is not None:
+            signals[label] = "BULLISH" if close > sma else "BEARISH"
 
-    # Bollinger Band position
-    bb_pct = last.get("bb_pct")
-    if bb_pct is not None:
-        if bb_pct < 0.2:
-            signals["BB"] = "BULLISH"
-        elif bb_pct > 0.8:
-            signals["BB"] = "BEARISH"
-        else:
-            signals["BB"] = "NEUTRAL"
+    # Bollinger Band %B
+    if (pct := _safe("bb_pct")) is not None:
+        signals["BB"] = "BULLISH" if pct < 0.2 else ("BEARISH" if pct > 0.8 else "NEUTRAL")
 
+    log.debug("signals_computed n=%d signals=%s", len(signals), signals)
     return signals
 
 
-def signal_summary(signals: dict[str, str]) -> str:
-    """
-    Return an overall bias string: "BULLISH" | "BEARISH" | "MIXED".
-    Simple majority vote across all signals.
+def signal_summary(signals: SignalMap) -> str:
+    """Aggregate individual signals into a single overall bias string.
+
+    Uses a simple majority-vote algorithm:
+    - More BULLISH than BEARISH → ``"BULLISH"``
+    - More BEARISH than BULLISH → ``"BEARISH"``
+    - Equal counts or empty → ``"MIXED"`` / ``"NEUTRAL"``
+
+    Args:
+        signals: A :data:`SignalMap` as returned by :func:`get_signals`.
+
+    Returns:
+        One of ``"BULLISH"``, ``"BEARISH"``, ``"MIXED"``, or ``"NEUTRAL"``.
     """
     if not signals:
         return "NEUTRAL"
-    counts = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0}
-    for v in signals.values():
-        counts[v] = counts.get(v, 0) + 1
+
+    counts: dict[str, int] = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0}
+    for value in signals.values():
+        counts[value] = counts.get(value, 0) + 1
+
     if counts["BULLISH"] > counts["BEARISH"]:
         return "BULLISH"
     if counts["BEARISH"] > counts["BULLISH"]:
         return "BEARISH"
+    if counts["BULLISH"] == 0 and counts["BEARISH"] == 0:
+        return "NEUTRAL"
     return "MIXED"
