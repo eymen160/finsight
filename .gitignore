@@ -1,0 +1,42 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environment ───────────────────────────────────────────────
+.env
+.venv/
+venv/
+env/
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ── Testing ───────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Type checking ─────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+
+# ── Project-specific ──────────────────────────────────────────
+data/faiss_index/        # FAISS index (regenerable)
+data/documents/          # User-uploaded PDFs (private)
+*.pdf
+
+# ── Streamlit ─────────────────────────────────────────────────
+.streamlit/secrets.toml

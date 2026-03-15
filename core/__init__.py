@@ -1,0 +1,1 @@
+# FinSight core package

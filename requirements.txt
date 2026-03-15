@@ -1,0 +1,37 @@
+# ============================================================
+# FinSight — Requirements  (Streamlit Cloud compatible)
+# ============================================================
+
+# --- LLM & Orchestration ---
+anthropic>=0.25.0,<1.0.0
+langchain>=0.2.0,<0.3.0
+langchain-community>=0.2.0,<0.3.0
+langchain-anthropic>=0.1.0,<0.2.0
+
+# --- Vector Store ---
+faiss-cpu>=1.8.0,<2.0.0
+
+# --- Financial Data ---
+yfinance>=0.2.40,<0.3.0
+pandas>=2.2.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+ta>=0.11.0,<0.12.0
+
+# --- Document Processing (RAG) ---
+pypdf>=4.0.0,<5.0.0
+tiktoken>=0.7.0,<1.0.0
+
+# --- Embeddings (local, no API key needed) ---
+sentence-transformers>=3.0.0,<4.0.0
+torch>=2.0.0,<3.0.0
+
+# --- UI ---
+streamlit>=1.35.0,<2.0.0
+plotly>=5.20.0,<6.0.0
+
+# --- Config & Utilities ---
+pydantic>=2.7.0,<3.0.0
+pydantic-settings>=2.3.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+tenacity>=8.3.0,<9.0.0
+structlog>=24.0.0,<25.0.0
