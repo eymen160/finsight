@@ -1,28 +1,12 @@
 """
-FinSight — Streamlit Application Entry Point
-================================================
-Single-file app using session_state navigation (Streamlit Cloud compatible).
-
-Architecture:
-- UI layer   : this file only. No business logic here.
-- Data layer : core/data/stock_client.py
-- LLM layer  : core/llm/claude_client.py
-- Analysis   : core/analysis/technical.py
-- RAG        : core/rag/pipeline.py
-- Config     : config/settings.py
-
-@st.cache_resource is used for all heavy singletons (StockClient,
-ClaudeClient, RAGPipeline) so they are initialised once per interpreter
-process, not once per rerun.
+FinSight — Production Streamlit App
+Bloomberg Terminal × Stripe Design System
 """
 from __future__ import annotations
-
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Configure logging before any other import
 from core.logger import configure_logging
 from config.settings import settings
 configure_logging(settings.log_level)
@@ -36,147 +20,361 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Design System ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# DESIGN SYSTEM — Bloomberg Terminal × Stripe 2026
+# ══════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-*, *::before, *::after { box-sizing: border-box; }
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
 
+/* ── Root background + mesh gradient ── */
 html, body, [data-testid="stAppViewContainer"] {
-    background: #080c14 !important;
-    font-family: 'Inter', sans-serif !important;
+    background: #05080f !important;
+    font-family: 'Inter', -apple-system, sans-serif !important;
+    color: #e2e8f0 !important;
 }
-
 [data-testid="stAppViewContainer"]::before {
     content: '';
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
     background:
-        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(56,139,253,0.07) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(63,185,80,0.05) 0%, transparent 60%),
-        radial-gradient(ellipse 50% 60% at 50% 50%, rgba(139,92,246,0.04) 0%, transparent 60%);
+        radial-gradient(ellipse 900px 600px at 15% 0%,   rgba(56,139,253,0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 700px 500px at 85% 100%, rgba(63,185,80,0.04)  0%, transparent 70%),
+        radial-gradient(ellipse 600px 800px at 50% 50%,  rgba(110,64,201,0.03) 0%, transparent 70%);
 }
 
+/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: rgba(13,17,28,0.97) !important;
-    border-right: 1px solid rgba(255,255,255,0.06) !important;
-    backdrop-filter: blur(20px) !important;
+    background: rgba(8,11,20,0.98) !important;
+    border-right: 1px solid rgba(255,255,255,0.05) !important;
+    backdrop-filter: blur(24px) !important;
 }
-[data-testid="stSidebar"] * { color: #c9d1d9 !important; }
+[data-testid="stSidebar"] > div { padding-top: 0 !important; }
 
+/* ── Sidebar buttons (nav) ── */
 [data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    border-radius: 10px !important;
-    color: #8b949e !important;
+    border: 1px solid transparent !important;
+    border-radius: 8px !important;
+    color: #64748b !important;
     font-size: 13px !important;
     font-weight: 500 !important;
-    padding: 10px 14px !important;
+    padding: 9px 12px !important;
     text-align: left !important;
     width: 100% !important;
-    margin-bottom: 4px !important;
-    transition: all 0.2s ease !important;
+    margin-bottom: 2px !important;
+    transition: all 0.15s ease !important;
+    letter-spacing: 0.01em !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(56,139,253,0.08) !important;
+    border-color: rgba(56,139,253,0.2) !important;
+    color: #94a3b8 !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+.nav-active [data-testid="stSidebar"] .stButton > button,
+.nav-active .stButton > button {
     background: rgba(56,139,253,0.12) !important;
-    border-color: rgba(56,139,253,0.4) !important;
-    color: #e6edf3 !important;
-    transform: translateX(2px) !important;
-}
-.nav-active button {
-    background: rgba(56,139,253,0.15) !important;
-    border-color: rgba(56,139,253,0.5) !important;
-    color: #58a6ff !important;
+    border-color: rgba(56,139,253,0.35) !important;
+    color: #60a5fa !important;
 }
 
-[data-testid="stMetric"] {
-    background: rgba(22,27,42,0.8) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
-    border-radius: 12px !important;
-    padding: 16px 20px !important;
-    backdrop-filter: blur(10px) !important;
-    transition: border-color 0.2s !important;
-}
-[data-testid="stMetric"]:hover { border-color: rgba(56,139,253,0.3) !important; }
-[data-testid="stMetricLabel"] { color: #8b949e !important; font-size: 11px !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
-[data-testid="stMetricValue"] { color: #e6edf3 !important; font-size: 22px !important; font-weight: 600 !important; }
-
-[data-testid="stAlert"] {
-    background: rgba(22,27,42,0.7) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
-    border-radius: 14px !important;
-    backdrop-filter: blur(12px) !important;
-}
-[data-testid="stChatMessage"] {
-    background: rgba(22,27,42,0.6) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    border-radius: 12px !important;
-    margin-bottom: 8px !important;
-}
-[data-testid="stChatInput"] > div {
-    background: rgba(22,27,42,0.9) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 12px !important;
-}
-[data-testid="stTextInput"] > div > div {
-    background: rgba(22,27,42,0.8) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 10px !important;
-    color: #e6edf3 !important;
-}
-[data-testid="stSelectbox"] > div > div {
-    background: rgba(22,27,42,0.8) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 10px !important;
-}
-
-/* Main action buttons */
+/* ── Main action buttons ── */
 .stButton > button {
-    background: linear-gradient(135deg, #1f6feb, #388bfd) !important;
-    border: none !important;
-    border-radius: 10px !important;
-    color: #fff !important;
+    background: rgba(56,139,253,0.1) !important;
+    border: 1px solid rgba(56,139,253,0.25) !important;
+    border-radius: 8px !important;
+    color: #60a5fa !important;
     font-weight: 600 !important;
     font-size: 13px !important;
     letter-spacing: 0.02em !important;
-    padding: 10px 20px !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 2px 12px rgba(56,139,253,0.25) !important;
+    padding: 9px 18px !important;
+    transition: all 0.15s ease !important;
+    box-shadow: 0 0 0 0 rgba(56,139,253,0) !important;
 }
 .stButton > button:hover {
-    box-shadow: 0 4px 20px rgba(56,139,253,0.4) !important;
-    transform: translateY(-1px) !important;
+    background: rgba(56,139,253,0.18) !important;
+    border-color: rgba(56,139,253,0.5) !important;
+    box-shadow: 0 0 16px rgba(56,139,253,0.15) !important;
+    transform: none !important;
 }
 
+/* ── Metric cards ── */
+[data-testid="stMetric"] {
+    background: rgba(12,16,28,0.9) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 10px !important;
+    padding: 14px 16px !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+[data-testid="stMetric"]::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(56,139,253,0.4), transparent);
+}
+[data-testid="stMetricLabel"] {
+    color: #475569 !important;
+    font-size: 10px !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    font-weight: 600 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #f1f5f9 !important;
+    font-size: 20px !important;
+    font-weight: 600 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    letter-spacing: -0.02em !important;
+}
+
+/* ── Inputs ── */
+[data-testid="stTextInput"] > div > div,
+[data-testid="stSelectbox"] > div > div {
+    background: rgba(12,16,28,0.8) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 8px !important;
+    color: #e2e8f0 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 13px !important;
+}
+[data-testid="stTextInput"] > div > div:focus-within {
+    border-color: rgba(56,139,253,0.5) !important;
+    box-shadow: 0 0 0 3px rgba(56,139,253,0.1) !important;
+}
+
+/* ── Chat ── */
+[data-testid="stChatMessage"] {
+    background: rgba(12,16,28,0.7) !important;
+    border: 1px solid rgba(255,255,255,0.05) !important;
+    border-radius: 10px !important;
+    margin-bottom: 6px !important;
+}
+[data-testid="stChatInput"] > div {
+    background: rgba(12,16,28,0.95) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 10px !important;
+}
+[data-testid="stChatInput"] > div:focus-within {
+    border-color: rgba(56,139,253,0.4) !important;
+}
+
+/* ── Expander ── */
 [data-testid="stExpander"] {
-    background: rgba(22,27,42,0.6) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
-    border-radius: 12px !important;
+    background: rgba(12,16,28,0.7) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 10px !important;
 }
-[data-testid="stSuccess"] { background: rgba(35,134,54,0.12) !important; border-color: rgba(35,134,54,0.3) !important; border-radius: 10px !important; }
-[data-testid="stError"]   { background: rgba(248,81,73,0.12)  !important; border-color: rgba(248,81,73,0.3)  !important; border-radius: 10px !important; }
-[data-testid="stWarning"] { background: rgba(210,153,34,0.12) !important; border-color: rgba(210,153,34,0.3) !important; border-radius: 10px !important; }
+[data-testid="stExpander"] summary {
+    color: #64748b !important;
+    font-size: 12px !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+}
 
-hr { border-color: rgba(255,255,255,0.06) !important; margin: 16px 0 !important; }
-.js-plotly-plot { border-radius: 14px !important; overflow: hidden !important; }
+/* ── Tabs ── */
+[data-testid="stTabs"] [data-testid="stTab"] {
+    background: transparent !important;
+    border-bottom: 2px solid transparent !important;
+    color: #64748b !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+    padding: 8px 16px !important;
+    border-radius: 0 !important;
+    transition: all 0.15s !important;
+}
+[data-testid="stTabs"] [data-testid="stTab"][aria-selected="true"] {
+    color: #60a5fa !important;
+    border-bottom-color: #3b82f6 !important;
+    background: transparent !important;
+}
+[data-testid="stTabs"] [role="tablist"] {
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+    gap: 4px !important;
+}
 
-h1 { font-size: 2rem !important; font-weight: 700 !important; color: #e6edf3 !important; letter-spacing: -0.02em !important; }
-h2 { font-size: 1.4rem !important; font-weight: 600 !important; color: #e6edf3 !important; }
-h3 { font-size: 1.1rem !important; font-weight: 600 !important; color: #c9d1d9 !important; }
-p, li, .stMarkdown { color: #8b949e !important; line-height: 1.6 !important; }
-code { font-family: 'JetBrains Mono', monospace !important; background: rgba(56,139,253,0.1) !important; color: #58a6ff !important; padding: 2px 6px !important; border-radius: 4px !important; font-size: 0.85em !important; }
+/* ── Alerts ── */
+[data-testid="stAlert"]   { background: rgba(12,16,28,0.8) !important; border-radius: 8px !important; }
+[data-testid="stSuccess"] { background: rgba(34,197,94,0.08)  !important; border: 1px solid rgba(34,197,94,0.2)  !important; border-radius: 8px !important; }
+[data-testid="stError"]   { background: rgba(239,68,68,0.08)  !important; border: 1px solid rgba(239,68,68,0.2)  !important; border-radius: 8px !important; }
+[data-testid="stWarning"] { background: rgba(234,179,8,0.08)  !important; border: 1px solid rgba(234,179,8,0.2)  !important; border-radius: 8px !important; }
 
+/* ── Toggle ── */
+[data-testid="stToggle"] label { color: #64748b !important; font-size: 12px !important; }
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] {
+    background: rgba(12,16,28,0.6) !important;
+    border: 1px dashed rgba(255,255,255,0.1) !important;
+    border-radius: 10px !important;
+    padding: 12px !important;
+}
+
+/* ── Plotly container ── */
+.js-plotly-plot { border-radius: 10px !important; }
+.stPlotlyChart { border-radius: 10px !important; overflow: hidden !important; }
+
+/* ── Spinner ── */
+[data-testid="stSpinner"] > div { border-top-color: #3b82f6 !important; }
+
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+/* ── Divider ── */
+hr { border: none !important; border-top: 1px solid rgba(255,255,255,0.05) !important; margin: 20px 0 !important; }
+
+/* ── Typography ── */
+h1, h2, h3 { font-family: 'Inter', sans-serif !important; letter-spacing: -0.02em !important; }
+p, li, .stMarkdown p { color: #94a3b8 !important; line-height: 1.65 !important; font-size: 14px !important; }
+code, .stMarkdown code {
+    font-family: 'JetBrains Mono', monospace !important;
+    background: rgba(56,139,253,0.1) !important;
+    color: #93c5fd !important;
+    padding: 1px 6px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+}
+
+/* ── Status bar ── */
+.status-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: rgba(12,16,28,0.8);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px;
+    font-size: 11px; color: #475569;
+    font-family: 'JetBrains Mono', monospace;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 2s infinite; }
+.status-dot.green  { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.status-dot.yellow { background: #eab308; box-shadow: 0 0 6px #eab308; }
+.status-dot.red    { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ── Bento card ── */
+.bento {
+    background: rgba(12,16,28,0.85);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+.bento:hover { border-color: rgba(56,139,253,0.2); }
+.bento-accent {
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent-start), var(--accent-end));
+}
+
+/* ── Signal badge ── */
+.signal-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    font-family: 'JetBrains Mono', monospace;
+}
+.signal-bullish { background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.3);  color: #4ade80; }
+.signal-bearish { background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.3);  color: #f87171; }
+.signal-neutral { background: rgba(234,179,8,0.1);  border: 1px solid rgba(234,179,8,0.3);  color: #fbbf24; }
+.signal-mixed   { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); color: #c4b5fd; }
+
+/* ── Stat chip ── */
+.stat-chip {
+    background: rgba(12,16,28,0.9);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px; padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+}
+.stat-chip .label { font-size: 10px; color: #475569; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+.stat-chip .value { font-size: 16px; color: #f1f5f9; font-weight: 600; }
+
+/* ── Ticker header ── */
+.ticker-header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 20px;
+}
+.ticker-name { font-size: 22px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.02em; }
+.ticker-sym  { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #475569;
+               background: rgba(255,255,255,0.05); padding: 3px 8px; border-radius: 5px; }
+.ticker-tag  { font-size: 11px; color: #94a3b8; background: rgba(255,255,255,0.04);
+               padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); }
+
+/* ── Section header ── */
+.section-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.section-header .icon { font-size: 14px; }
+.section-header .title {
+    font-size: 11px; font-weight: 600; color: #475569;
+    letter-spacing: 0.08em; text-transform: uppercase;
+}
+.section-header .badge {
+    margin-left: auto; font-size: 10px; color: #3b82f6;
+    background: rgba(59,130,246,0.1); padding: 2px 8px;
+    border-radius: 20px; border: 1px solid rgba(59,130,246,0.2);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── AI panel ── */
+.ai-panel {
+    background: rgba(12,16,28,0.7);
+    border: 1px solid rgba(56,139,253,0.15);
+    border-radius: 10px; padding: 20px;
+    position: relative; overflow: hidden;
+}
+.ai-panel::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(56,139,253,0.5), transparent);
+}
+
+/* ── Doc list item ── */
+.doc-item {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(34,197,94,0.05); border: 1px solid rgba(34,197,94,0.15);
+    border-radius: 7px; padding: 8px 12px; margin-bottom: 5px;
+    font-size: 12px; color: #4ade80;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Empty state ── */
+.empty-state {
+    text-align: center; padding: 48px 20px;
+    background: rgba(12,16,28,0.5);
+    border: 1px dashed rgba(255,255,255,0.07);
+    border-radius: 12px;
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5; }
+.empty-state .title { font-size: 15px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+.empty-state .sub   { font-size: 13px; color: #334155; }
+
+/* ── Remove Streamlit branding ── */
+#MainMenu, footer, header { visibility: hidden; }
+[data-testid="stDecoration"] { display: none; }
+
+/* ── Main content padding ── */
+[data-testid="stMain"] > div { padding-top: 1.5rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Cached resource factory functions ─────────────────────────
-# @st.cache_resource: initialised ONCE per process, shared across all
-# sessions and reruns. Correct for heavy objects (API clients, indexes).
-
+# ══════════════════════════════════════════════════════════════
+# CACHED RESOURCE FACTORIES
+# ══════════════════════════════════════════════════════════════
 @st.cache_resource
 def _get_stock_client():
     from core.data.stock_client import StockClient
@@ -193,41 +391,68 @@ def _get_rag_pipeline():
     return RAGPipeline()
 
 
-# ── Navigation state ──────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# NAVIGATION STATE
+# ══════════════════════════════════════════════════════════════
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
-def _goto(page: str) -> None:
-    st.session_state.page = page
+def _goto(p: str) -> None:
+    st.session_state.page = p
     st.rerun()
 
 
-# ── Sidebar ───────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════════════════════════
 with st.sidebar:
+    # Logo + wordmark
     st.markdown("""
-    <div style="padding:8px 0 20px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-            <span style="font-size:24px;">📈</span>
-            <span style="font-size:18px;font-weight:700;color:#e6edf3;letter-spacing:-0.02em;">FinSight</span>
+    <div style="padding:20px 16px 16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div style="width:28px;height:28px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+                        border-radius:7px;display:flex;align-items:center;justify-content:center;
+                        font-size:14px;flex-shrink:0;">📈</div>
+            <div>
+                <div style="font-size:15px;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;line-height:1;">FinSight</div>
+                <div style="font-size:10px;color:#334155;letter-spacing:0.06em;text-transform:uppercase;margin-top:2px;">AI Financial Intelligence</div>
+            </div>
         </div>
-        <span style="font-size:11px;color:#484f58;letter-spacing:0.05em;">AI FINANCIAL ANALYSIS · v0.1.0</span>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown('<div style="padding:0 8px;">', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:10px;color:#1e293b;letter-spacing:0.08em;text-transform:uppercase;padding:4px 4px 6px;font-weight:600;">Navigation</p>', unsafe_allow_html=True)
 
     _NAV = [("home","🏠","Home"),("stock","📊","Stock Analysis"),("docs","📄","Document Q&A"),("chat","💬","AI Chat")]
     for key, icon, label in _NAV:
         active = st.session_state.page == key
-        st.markdown(f'<div class="{"nav-active" if active else ""}">', unsafe_allow_html=True)
+        css = "nav-active" if active else ""
+        st.markdown(f'<div class="{css}">', unsafe_allow_html=True)
         if st.button(f"{icon}  {label}", key=f"nav_{key}", use_container_width=True):
             _goto(key)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # System status
     st.markdown("""
-    <div style="padding:12px;background:rgba(248,81,73,0.07);border:1px solid rgba(248,81,73,0.2);border-radius:10px;">
-        <p style="font-size:11px;color:#8b949e;margin:0;line-height:1.5;">
-            ⚠️ <strong style="color:#c9d1d9;">Disclaimer</strong><br>
-            For informational purposes only. Not investment advice.
+    <div style="padding:0 8px 12px;">
+        <div class="status-bar">
+            <div class="status-dot green"></div>
+            <span>Markets · NYSE/NASDAQ</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Disclaimer
+    st.markdown("""
+    <div style="margin:0 8px 16px;padding:10px 12px;background:rgba(239,68,68,0.05);
+                border:1px solid rgba(239,68,68,0.12);border-radius:8px;">
+        <p style="font-size:10px;color:#475569;margin:0;line-height:1.5;">
+            ⚠️ <strong style="color:#64748b;">Disclaimer</strong> — Informational only.
+            Not investment advice. Always consult a qualified financial professional.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -237,55 +462,73 @@ with st.sidebar:
 # PAGE: HOME
 # ══════════════════════════════════════════════════════════════
 if st.session_state.page == "home":
+    # Hero
     st.markdown("""
-    <div style="padding:40px 0 24px;">
-        <h1 style="font-size:2.8rem!important;background:linear-gradient(135deg,#58a6ff,#79c0ff,#a5d6ff);
-                   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px;">
-            AI-Powered Financial Analysis
+    <div style="padding:8px 0 32px;">
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
+                    background:rgba(56,139,253,0.08);border:1px solid rgba(56,139,253,0.2);
+                    border-radius:20px;font-size:11px;color:#60a5fa;margin-bottom:16px;
+                    font-family:'JetBrains Mono',monospace;letter-spacing:0.04em;">
+            ● LIVE  ·  Claude AI  ·  v0.1.0
+        </div>
+        <h1 style="font-size:2.4rem;font-weight:700;color:#f1f5f9;line-height:1.15;margin-bottom:12px;letter-spacing:-0.03em;">
+            Institutional-grade<br>financial intelligence
         </h1>
-        <p style="font-size:16px;color:#8b949e;max-width:560px;line-height:1.7;">
-            Institutional-grade stock analysis, SEC document intelligence,
-            and conversational finance — all in one platform.
+        <p style="font-size:15px;color:#64748b;max-width:500px;line-height:1.7;margin:0;">
+            Real-time stock analysis, SEC document Q&A via RAG,
+            and conversational finance — powered by Claude AI.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3, gap="medium")
+    # Feature cards — bento grid
+    c1, c2, c3 = st.columns(3, gap="small")
+
     _CARDS = [
-        ("stock","📊","Stock Analysis","Technical indicators (RSI, MACD, Bollinger Bands), fundamental metrics, and streaming AI analysis for any ticker.","#1f6feb","Open Stock Analysis"),
-        ("docs", "📄","Document Q&A",  "Upload 10-K, 10-Q, or earnings transcripts. Ask questions grounded in the actual text via RAG.",                 "#238636","Open Document Q&A"),
-        ("chat", "💬","AI Chat",        "Conversational financial assistant powered by Claude. Ask anything about markets, valuation, or macro trends.",     "#6e40c9","Open AI Chat"),
+        ("stock","📊","Stock Analysis",
+         "Candlestick charts, RSI, MACD, Bollinger Bands, SMA 20/50/200. Real-time fundamentals with streaming AI analysis.",
+         "#1d4ed8","#3b82f6","Open Analysis"),
+        ("docs","📄","Document Q&A",
+         "Upload 10-K, 10-Q, or earnings transcripts. Ask questions grounded in the exact text via FAISS vector search.",
+         "#15803d","#22c55e","Open Q&A"),
+        ("chat","💬","AI Chat",
+         "Conversational financial assistant. Ask about markets, valuation methods, macro trends, or explain any concept.",
+         "#6d28d9","#8b5cf6","Open Chat"),
     ]
-    for col, (page, icon, title, desc, color, btn) in zip([c1,c2,c3], _CARDS):
+
+    for col, (page, icon, title, desc, c_start, c_end, btn) in zip([c1,c2,c3], _CARDS):
         with col:
             st.markdown(f"""
-            <div style="background:rgba(22,27,42,0.8);border:1px solid rgba(255,255,255,0.07);
-                        border-top:3px solid {color};border-radius:16px;padding:24px;margin-bottom:12px;min-height:160px;">
-                <div style="font-size:28px;margin-bottom:12px;">{icon}</div>
-                <h3 style="color:#e6edf3!important;font-size:15px!important;margin:0 0 8px;font-weight:600;">{title}</h3>
-                <p style="font-size:13px;color:#8b949e;margin:0;line-height:1.5;">{desc}</p>
+            <div class="bento" style="--accent-start:{c_start};--accent-end:{c_end};min-height:180px;">
+                <div class="bento-accent"></div>
+                <div style="font-size:22px;margin-bottom:12px;">{icon}</div>
+                <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:8px;letter-spacing:-0.01em;">{title}</div>
+                <div style="font-size:12px;color:#475569;line-height:1.6;">{desc}</div>
             </div>
             """, unsafe_allow_html=True)
             if st.button(btn, key=f"h_{page}", use_container_width=True):
                 _goto(page)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # Stats row
     st.markdown("""
-    <div style="background:rgba(22,27,42,0.5);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:20px 24px;">
-        <p style="font-size:11px;color:#484f58;letter-spacing:0.08em;text-transform:uppercase;margin:0 0 16px;">⚡ Platform Capabilities</p>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
-            <div style="text-align:center;">
-                <div style="font-size:24px;font-weight:700;color:#58a6ff;">15+</div>
-                <div style="font-size:11px;color:#8b949e;">Technical Indicators</div>
-            </div>
-            <div style="text-align:center;">
-                <div style="font-size:24px;font-weight:700;color:#3fb950;">RAG</div>
-                <div style="font-size:11px;color:#8b949e;">Document Intelligence</div>
-            </div>
-            <div style="text-align:center;">
-                <div style="font-size:24px;font-weight:700;color:#a371f7;">Claude</div>
-                <div style="font-size:11px;color:#8b949e;">AI Analysis Engine</div>
-            </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div class="stat-chip">
+            <div class="label">Indicators</div>
+            <div class="value">15+</div>
+        </div>
+        <div class="stat-chip">
+            <div class="label">AI Engine</div>
+            <div class="value">Claude</div>
+        </div>
+        <div class="stat-chip">
+            <div class="label">Vector DB</div>
+            <div class="value">FAISS</div>
+        </div>
+        <div class="stat-chip">
+            <div class="label">Data</div>
+            <div class="value">Yahoo Finance</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -303,140 +546,290 @@ elif st.session_state.page == "stock":
     stock_client  = _get_stock_client()
     claude_client = _get_claude_client()
 
+    # Sidebar controls
     with st.sidebar:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<p style="font-size:11px;color:#484f58;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:12px;">⚙️ Settings</p>', unsafe_allow_html=True)
-        ticker = st.text_input("Ticker Symbol", value="AAPL", max_chars=10).upper().strip()
-        period = st.selectbox("Time Period", ["1mo","3mo","6mo","1y","2y","5y"], index=3)
-        run_ai = st.toggle("🤖 AI Analysis", value=True)
+        st.markdown("""
+        <div style="padding:0 8px;">
+            <div class="section-header">
+                <span class="icon">⚙️</span>
+                <span class="title">Analysis Settings</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div style="padding:0 4px;">', unsafe_allow_html=True)
+        ticker = st.text_input(
+            "Ticker",
+            value="AAPL",
+            max_chars=10,
+            help="Enter any NYSE/NASDAQ/global ticker (e.g. AAPL, MSFT, TSLA, BTC-USD)",
+            placeholder="e.g. AAPL",
+        ).upper().strip()
+        period = st.selectbox(
+            "Time Period",
+            ["1mo","3mo","6mo","1y","2y","5y"],
+            index=3,
+            help="Historical price range for chart and technical indicators",
+        )
+        run_ai = st.toggle(
+            "AI Analysis",
+            value=True,
+            help="Stream a Claude-powered analysis using current data and signals",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("⟳  Refresh Data", use_container_width=True,
+                     help="Clear cache and re-fetch from Yahoo Finance"):
             stock_client.clear_cache()
-            st.cache_data.clear()
             st.rerun()
 
-    st.markdown('<h1 style="margin-bottom:4px;">📊 Stock Analysis</h1>', unsafe_allow_html=True)
+    # Page header
+    st.markdown("""
+    <div class="section-header" style="margin-bottom:20px;">
+        <span class="icon">📊</span>
+        <span class="title">Stock Analysis</span>
+    </div>
+    """, unsafe_allow_html=True)
 
     if not ticker:
-        st.info("Enter a ticker symbol in the sidebar to begin.")
+        st.markdown("""
+        <div class="empty-state">
+            <div class="icon">📊</div>
+            <div class="title">No ticker entered</div>
+            <div class="sub">Type a symbol in the sidebar to begin analysis</div>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
 
-    # ── Data fetch with specific error handling ───────────────
-    with st.spinner(f"Fetching market data for **{ticker}**…"):
+    # Data fetch
+    with st.spinner(f"Fetching {ticker} from Yahoo Finance…"):
         try:
             info   = stock_client.get_info(ticker)
             df_raw = stock_client.get_history(ticker, period=period)
-        except RateLimitError as exc:
+        except RateLimitError:
             st.warning(
-                f"⚠️ **Yahoo Finance Rate Limit** — {exc}\n\n"
-                "Wait 30–60 seconds, then click **🔄 Refresh Data** in the sidebar.\n"
-                "Data is cached for 10 minutes once loaded successfully."
+                "**Yahoo Finance Rate Limit** — Streamlit Cloud shares IPs with thousands of apps.\n\n"
+                "✅ **What to do:** Wait 30–60 seconds, then click ⟳ Refresh Data in the sidebar. "
+                "Data is cached for 10 minutes once fetched."
             )
             st.stop()
-        except TickerNotFoundError as exc:
-            st.error(f"**Ticker Not Found:** {exc}")
+        except TickerNotFoundError:
+            st.error(
+                f"**'{ticker}' not found** — Double-check the symbol. "
+                "Try `AAPL`, `MSFT`, `BTC-USD`, or `^GSPC` for the S&P 500."
+            )
             st.stop()
         except FinSightError as exc:
-            st.error(f"**Data Error:** {exc}")
+            st.error(f"**Data error:** {exc}")
             st.stop()
 
     df      = add_indicators(df_raw)
     signals = get_signals(df)
     bias    = signal_summary(signals)
 
-    # ── Header ────────────────────────────────────────────────
-    _BIAS_COLOR = {"BULLISH":"#3fb950","BEARISH":"#f85149","MIXED":"#d29922","NEUTRAL":"#8b949e"}
-    bc = _BIAS_COLOR.get(bias, "#8b949e")
+    # ── Ticker header ─────────────────────────────────────────
+    _bias_class = {"BULLISH":"signal-bullish","BEARISH":"signal-bearish","MIXED":"signal-mixed","NEUTRAL":"signal-neutral"}.get(bias,"signal-neutral")
+    _bias_dot   = {"BULLISH":"●","BEARISH":"●","MIXED":"◐","NEUTRAL":"○"}.get(bias,"○")
 
     st.markdown(f"""
-    <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
-        <h2 style="color:#e6edf3!important;font-size:1.6rem!important;margin:0;">{info.name}</h2>
-        <code style="font-size:14px!important;">{ticker}</code>
-        <span style="font-size:12px;color:#8b949e;background:rgba(255,255,255,0.05);padding:3px 10px;border-radius:20px;">{info.sector}</span>
-        <span style="font-size:13px;color:{bc};font-weight:600;background:rgba(255,255,255,0.04);padding:3px 12px;border-radius:20px;border:1px solid {bc}40;">⬤ {bias}</span>
+    <div class="ticker-header">
+        <span class="ticker-name">{info.name}</span>
+        <span class="ticker-sym">{ticker}</span>
+        <span class="ticker-tag">{info.sector}</span>
+        <span class="ticker-tag">{info.industry}</span>
+        <span class="signal-badge {_bias_class}" style="margin-left:auto;">{_bias_dot} {bias}</span>
     </div>
     """, unsafe_allow_html=True)
 
+    # ── Key metrics ───────────────────────────────────────────
     def _fmt_cap(v: float | int | None) -> str:
-        if v is None: return "N/A"
+        if v is None: return "—"
         if v >= 1e12: return f"${v/1e12:.2f}T"
         if v >= 1e9:  return f"${v/1e9:.2f}B"
         if v >= 1e6:  return f"${v/1e6:.2f}M"
-        return f"${v:,.2f}"
+        return f"${v:,.0f}"
 
-    mc1,mc2,mc3,mc4,mc5,mc6 = st.columns(6)
-    mc1.metric("Current Price",  f"${info.current_price:,.2f}"        if info.current_price        else "N/A")
-    mc2.metric("52W High",       f"${info.fifty_two_week_high:,.2f}"  if info.fifty_two_week_high  else "N/A")
-    mc3.metric("52W Low",        f"${info.fifty_two_week_low:,.2f}"   if info.fifty_two_week_low   else "N/A")
-    mc4.metric("P/E (TTM)",      f"{info.pe_ratio:.1f}x"              if info.pe_ratio             else "N/A")
-    mc5.metric("Fwd P/E",        f"{info.forward_pe:.1f}x"            if info.forward_pe           else "N/A")
-    mc6.metric("Market Cap",     _fmt_cap(info.market_cap))
+    def _fmt_price(v: float | None) -> str:
+        return f"${v:,.2f}" if v is not None else "—"
+
+    def _fmt_ratio(v: float | None, suffix: str = "x") -> str:
+        return f"{v:.2f}{suffix}" if v is not None else "—"
+
+    mc = st.columns(6, gap="small")
+    mc[0].metric("Price",      _fmt_price(info.current_price),
+                 help="Most recent market price (real-time or prior close)")
+    mc[1].metric("52W High",   _fmt_price(info.fifty_two_week_high))
+    mc[2].metric("52W Low",    _fmt_price(info.fifty_two_week_low))
+    mc[3].metric("P/E (TTM)",  _fmt_ratio(info.pe_ratio),
+                 help="Trailing 12-month price-to-earnings ratio")
+    mc[4].metric("Fwd P/E",    _fmt_ratio(info.forward_pe),
+                 help="Forward P/E based on next 12 months' consensus EPS estimate")
+    mc[5].metric("Market Cap", _fmt_cap(info.market_cap))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Chart ─────────────────────────────────────────────────
-    fig = make_subplots(
-        rows=3, cols=1, shared_xaxes=True,
-        row_heights=[0.58,0.22,0.20], vertical_spacing=0.02,
-        subplot_titles=("Price · Moving Averages · Bollinger Bands","RSI (14)","MACD"),
-    )
-    close = df["Close"].squeeze()
+    # ── Chart via tabs ────────────────────────────────────────
+    chart_tab, fund_tab = st.tabs(["📈  PRICE & INDICATORS", "📋  FUNDAMENTALS"])
 
-    fig.add_trace(go.Candlestick(
-        x=df.index, open=df["Open"].squeeze(), high=df["High"].squeeze(),
-        low=df["Low"].squeeze(), close=close, name="Price",
-        increasing_line_color="#3fb950", decreasing_line_color="#f85149",
-        increasing_fillcolor="rgba(63,185,80,0.8)", decreasing_fillcolor="rgba(248,81,73,0.8)",
-        showlegend=False,
-    ), row=1, col=1)
+    with chart_tab:
+        close = df["Close"].squeeze()
 
-    fig.add_trace(go.Scatter(x=df.index, y=df["bb_upper"],
-        line=dict(color="rgba(88,166,255,0.3)", width=1), showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["bb_lower"],
-        line=dict(color="rgba(88,166,255,0.3)", width=1),
-        fill="tonexty", fillcolor="rgba(88,166,255,0.05)", showlegend=False), row=1, col=1)
+        fig = make_subplots(
+            rows=3, cols=1, shared_xaxes=True,
+            row_heights=[0.58, 0.22, 0.20],
+            vertical_spacing=0.015,
+            subplot_titles=("", "", ""),
+        )
 
-    for col_n, color, lbl in [("sma_20","#f0a500","SMA 20"),("sma_50","#58a6ff","SMA 50"),("sma_200","#f85149","SMA 200")]:
-        fig.add_trace(go.Scatter(x=df.index, y=df[col_n], name=lbl, line=dict(color=color, width=1.3)), row=1, col=1)
+        # Candlestick
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df["Open"].squeeze(), high=df["High"].squeeze(),
+            low=df["Low"].squeeze(),   close=close,
+            name="OHLC",
+            increasing=dict(line=dict(color="#22c55e", width=1), fillcolor="rgba(34,197,94,0.75)"),
+            decreasing=dict(line=dict(color="#ef4444", width=1), fillcolor="rgba(239,68,68,0.75)"),
+            showlegend=False,
+            hovertemplate=(
+                "<b>%{x|%b %d, %Y}</b><br>"
+                "Open:  $%{open:,.2f}<br>"
+                "High:  $%{high:,.2f}<br>"
+                "Low:   $%{low:,.2f}<br>"
+                "Close: $%{close:,.2f}<extra></extra>"
+            ),
+        ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(x=df.index, y=df["rsi_14"], name="RSI", line=dict(color="#a371f7", width=1.5)), row=2, col=1)
-    fig.add_hrect(y0=70, y1=100, fillcolor="rgba(248,81,73,0.06)",  line_width=0, row=2, col=1)
-    fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(63,185,80,0.06)",  line_width=0, row=2, col=1)
-    fig.add_hline(y=70, line=dict(color="#f85149", dash="dot", width=1), row=2, col=1)
-    fig.add_hline(y=30, line=dict(color="#3fb950", dash="dot", width=1), row=2, col=1)
+        # Bollinger Bands
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["bb_upper"],
+            line=dict(color="rgba(96,165,250,0.25)", width=1, dash="dot"),
+            name="BB Upper", showlegend=False,
+            hovertemplate="BB Upper: $%{y:,.2f}<extra></extra>",
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["bb_lower"],
+            line=dict(color="rgba(96,165,250,0.25)", width=1, dash="dot"),
+            fill="tonexty", fillcolor="rgba(96,165,250,0.04)",
+            name="BB", showlegend=False,
+            hovertemplate="BB Lower: $%{y:,.2f}<extra></extra>",
+        ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(x=df.index, y=df["macd"],        name="MACD",   line=dict(color="#58a6ff",width=1.3)), row=3, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["macd_signal"], name="Signal", line=dict(color="#f0a500",width=1.3)), row=3, col=1)
-    hist_c = ["rgba(63,185,80,0.7)" if v >= 0 else "rgba(248,81,73,0.7)" for v in df["macd_hist"].fillna(0)]
-    fig.add_trace(go.Bar(x=df.index, y=df["macd_hist"], name="Hist", marker_color=hist_c, showlegend=False), row=3, col=1)
+        # SMAs
+        _smas = [("sma_20","#f59e0b","SMA 20"),("sma_50","#60a5fa","SMA 50"),("sma_200","#f87171","SMA 200")]
+        for col_n, color, lbl in _smas:
+            fig.add_trace(go.Scatter(
+                x=df.index, y=df[col_n], name=lbl,
+                line=dict(color=color, width=1.5),
+                hovertemplate=f"{lbl}: $%{{y:,.2f}}<extra></extra>",
+            ), row=1, col=1)
 
-    _GRID = dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)")
-    fig.update_layout(
-        height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(22,27,42,0.6)",
-        font=dict(family="Inter", color="#8b949e", size=11),
-        margin=dict(l=0,r=0,t=28,b=0), xaxis_rangeslider_visible=False,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-            bgcolor="rgba(13,17,28,0.8)", bordercolor="rgba(255,255,255,0.1)", borderwidth=1),
-        yaxis= dict(**_GRID, side="right"),
-        yaxis2=dict(**_GRID, side="right", range=[0,100]),
-        yaxis3=dict(**_GRID, side="right"),
-    )
-    for i in range(1,4):
-        fig.update_xaxes(**_GRID, row=i, col=1)
+        # Volume bars (mini, row 1 overlay — skip, too cluttered)
+        # RSI
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["rsi_14"], name="RSI",
+            line=dict(color="#a78bfa", width=1.5),
+            fill="tozeroy", fillcolor="rgba(167,139,250,0.04)",
+            hovertemplate="RSI: %{y:.1f}<extra></extra>",
+        ), row=2, col=1)
+        fig.add_hrect(y0=70, y1=100, fillcolor="rgba(239,68,68,0.05)",  line_width=0, row=2, col=1)
+        fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(34,197,94,0.05)",  line_width=0, row=2, col=1)
+        fig.add_hline(y=70, line=dict(color="#ef4444", dash="dot", width=0.8), row=2, col=1)
+        fig.add_hline(y=30, line=dict(color="#22c55e", dash="dot", width=0.8), row=2, col=1)
 
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        # MACD
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["macd"],        name="MACD",
+            line=dict(color="#60a5fa", width=1.4),
+            hovertemplate="MACD: %{y:.3f}<extra></extra>",
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["macd_signal"], name="Signal",
+            line=dict(color="#f59e0b", width=1.4),
+            hovertemplate="Signal: %{y:.3f}<extra></extra>",
+        ), row=3, col=1)
+        hist_vals = df["macd_hist"].fillna(0)
+        hist_c = ["rgba(34,197,94,0.6)" if v >= 0 else "rgba(239,68,68,0.6)" for v in hist_vals]
+        fig.add_trace(go.Bar(
+            x=df.index, y=hist_vals, name="Hist",
+            marker_color=hist_c, showlegend=False,
+            hovertemplate="Hist: %{y:.3f}<extra></extra>",
+        ), row=3, col=1)
 
-    # ── Signal Dashboard ──────────────────────────────────────
-    with st.expander("📡 Technical Signals", expanded=True):
+        # Layout
+        _grid = dict(showgrid=True, gridcolor="rgba(255,255,255,0.03)", gridwidth=1, zeroline=False)
+        fig.update_layout(
+            height=640,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor ="rgba(8,12,20,0.6)",
+            font=dict(family="Inter", color="#475569", size=10),
+            margin=dict(l=0, r=60, t=12, b=0),
+            xaxis_rangeslider_visible=False,
+            hovermode="x unified",
+            hoverlabel=dict(
+                bgcolor="rgba(8,11,20,0.95)",
+                bordercolor="rgba(255,255,255,0.1)",
+                font=dict(color="#e2e8f0", size=11, family="JetBrains Mono"),
+            ),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.01,
+                xanchor="right", x=1,
+                bgcolor="rgba(8,11,20,0.8)",
+                bordercolor="rgba(255,255,255,0.08)", borderwidth=1,
+                font=dict(size=10),
+            ),
+            yaxis= dict(**_grid, side="right", tickprefix="$", tickformat=",.0f"),
+            yaxis2=dict(**_grid, side="right", range=[0,100], ticksuffix=""),
+            yaxis3=dict(**_grid, side="right"),
+        )
+        for i in range(1,4):
+            fig.update_xaxes(**_grid, row=i, col=1, showticklabels=(i==3))
+
+        # Annotations for RSI bands
+        fig.add_annotation(x=df.index[5], y=70, text="OB", row=2, col=1,
+            showarrow=False, font=dict(size=9, color="#ef4444"), xanchor="left")
+        fig.add_annotation(x=df.index[5], y=30, text="OS", row=2, col=1,
+            showarrow=False, font=dict(size=9, color="#22c55e"), xanchor="left")
+
+        st.plotly_chart(fig, use_container_width=True, config={
+            "displayModeBar": True,
+            "modeBarButtonsToRemove": ["lasso2d","select2d","autoScale2d"],
+            "displaylogo": False,
+            "toImageButtonOptions": {"format":"svg","filename":f"finsight_{ticker}"},
+        })
+
+    with fund_tab:
+        f1, f2, f3 = st.columns(3, gap="small")
+        _fund_items = [
+            ("Trailing EPS",   f"${info.eps:.2f}"                  if info.eps             else "—"),
+            ("Dividend Yield", f"{info.dividend_yield*100:.2f}%"   if info.dividend_yield  else "—"),
+            ("P/E (TTM)",      _fmt_ratio(info.pe_ratio)),
+            ("Forward P/E",    _fmt_ratio(info.forward_pe)),
+            ("Market Cap",     _fmt_cap(info.market_cap)),
+            ("Currency",       info.currency),
+        ]
+        for col, (label, value) in zip([f1,f2,f3,f1,f2,f3], _fund_items):
+            col.markdown(f"""
+            <div class="stat-chip" style="margin-bottom:8px;">
+                <div class="label">{label}</div>
+                <div class="value">{value}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── Technical Signal Dashboard ────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("📡  TECHNICAL SIGNALS", expanded=True):
         if signals:
-            _SC = {"BULLISH":"#3fb950","BEARISH":"#f85149","NEUTRAL":"#d29922"}
-            sig_cols = st.columns(len(signals))
+            _SC = {"BULLISH":"signal-bullish","BEARISH":"signal-bearish","NEUTRAL":"signal-neutral"}
+            sig_cols = st.columns(len(signals), gap="small")
             for col, (name, val) in zip(sig_cols, signals.items()):
-                c = _SC.get(val,"#8b949e")
+                cls = _SC.get(val, "signal-neutral")
+                dot = "●" if val in ("BULLISH","BEARISH") else "○"
                 col.markdown(f"""
-                <div style="background:rgba(22,27,42,0.8);border:1px solid {c}30;border-radius:10px;padding:12px;text-align:center;">
-                    <div style="font-size:10px;color:#8b949e;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">{name}</div>
-                    <div style="font-size:13px;font-weight:600;color:{c};">{'🟢' if val=='BULLISH' else '🔴' if val=='BEARISH' else '🟡'} {val}</div>
+                <div style="text-align:center;padding:12px 6px;background:rgba(8,12,20,0.6);
+                            border:1px solid rgba(255,255,255,0.05);border-radius:8px;">
+                    <div style="font-size:9px;color:#334155;letter-spacing:0.1em;
+                                text-transform:uppercase;margin-bottom:8px;font-weight:600;">{name}</div>
+                    <span class="signal-badge {cls}">{dot} {val}</span>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -444,27 +837,31 @@ elif st.session_state.page == "stock":
     if run_ai:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-            <span style="font-size:18px;">🤖</span>
-            <h3 style="color:#e6edf3!important;font-size:15px!important;margin:0;">Claude AI Analysis</h3>
-            <span style="font-size:11px;color:#8b949e;background:rgba(56,139,253,0.1);padding:2px 8px;border-radius:20px;border:1px solid rgba(56,139,253,0.2);">Streaming</span>
+        <div class="section-header">
+            <span class="icon">🤖</span>
+            <span class="title">Claude AI Analysis</span>
+            <span class="badge">Streaming · claude-sonnet-4-6</span>
         </div>
         """, unsafe_allow_html=True)
+
         from core.exceptions import LLMError, LLMRateLimitError
-        with st.spinner("Generating analysis with Claude…"):
+
+        with st.spinner("Generating analysis…"):
             try:
                 msgs = claude_client.build_analysis_prompt(
                     ticker=ticker, info=info.__dict__,
                     signals=signals, signal_summary=bias, period=period,
                 )
-                with st.container():
-                    st.markdown('<div style="background:rgba(22,27,42,0.6);border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:20px;">', unsafe_allow_html=True)
-                    st.write_stream(claude_client.stream(msgs))
-                    st.markdown("</div>", unsafe_allow_html=True)
-            except LLMRateLimitError as exc:
-                st.warning(f"⚠️ Claude API rate limit. {exc}")
+                st.markdown('<div class="ai-panel">', unsafe_allow_html=True)
+                st.write_stream(claude_client.stream(msgs))
+                st.markdown("</div>", unsafe_allow_html=True)
+            except LLMRateLimitError:
+                st.warning("⚠️ Claude API rate limit reached. Wait ~60 seconds and refresh.")
             except LLMError as exc:
-                st.error(f"AI analysis failed: {exc}")
+                st.error(
+                    f"**AI analysis unavailable** — {exc}\n\n"
+                    "Check your `ANTHROPIC_API_KEY` in Streamlit Cloud Secrets."
+                )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -483,58 +880,129 @@ elif st.session_state.page == "docs":
     if "doc_messages" not in st.session_state:
         st.session_state.doc_messages = []
 
-    st.markdown('<h1 style="margin-bottom:4px;">📄 Document Q&A</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="color:#8b949e;margin-bottom:24px;">Upload SEC filings or earnings transcripts — ask questions grounded in the actual text.</p>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="section-header" style="margin-bottom:4px;">
+        <span class="icon">📄</span>
+        <span class="title">Document Q&A</span>
+        <span class="badge">RAG · FAISS Vector Search</span>
+    </div>
+    <p style="font-size:13px;color:#334155;margin-bottom:20px;">
+        Upload SEC filings, earnings transcripts, or annual reports.
+        Ask questions grounded in the exact document text.
+    </p>
+    """, unsafe_allow_html=True)
 
-    col_up, col_qa = st.columns([1, 2], gap="large")
+    col_up, col_qa = st.columns([5, 8], gap="large")
 
+    # ── Upload panel ──────────────────────────────────────────
     with col_up:
-        st.markdown('<p style="font-size:11px;color:#484f58;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">📁 Upload Document</p>', unsafe_allow_html=True)
-        uploaded = st.file_uploader("", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
+        st.markdown("""
+        <div class="section-header">
+            <span class="icon">📁</span>
+            <span class="title">Upload Document</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        uploaded = st.file_uploader(
+            "",
+            type=["pdf"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+            help="Upload PDF financial documents. Max ~10 MB per file.",
+        )
 
         if uploaded:
             for file in uploaded:
                 with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                     tmp.write(file.read())
                     tmp_path = tmp.name
-                with st.spinner(f"Indexing **{file.name}**…"):
+                with st.spinner(f"Indexing {file.name}…"):
                     try:
                         n = rag.ingest(tmp_path)
-                        st.success(f"✅ {file.name} · {n} chunks indexed")
-                    except DocumentParseError as exc:
-                        st.error(f"Parse failed: {exc}")
+                        st.success(f"✅ **{file.name}** — {n} chunks indexed")
+                    except DocumentParseError:
+                        st.error(
+                            f"⚠️ **{file.name}** appears to be a scanned image PDF with no text layer. "
+                            "Please use a text-searchable PDF."
+                        )
                     except DocumentLoadError as exc:
-                        st.error(f"Load failed: {exc}")
+                        st.error(f"❌ Cannot read **{file.name}**: {exc.reason}")
                     except FinSightError as exc:
                         st.error(str(exc))
 
+        # Indexed documents list
         docs = rag.list_documents()
         if docs:
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown('<p style="font-size:11px;color:#484f58;letter-spacing:0.08em;text-transform:uppercase;">📚 Indexed</p>', unsafe_allow_html=True)
+            st.markdown("""
+            <div class="section-header">
+                <span class="icon">📚</span>
+                <span class="title">Indexed Documents</span>
+            </div>
+            """, unsafe_allow_html=True)
             for d in docs:
-                st.markdown(f'<div style="background:rgba(35,134,54,0.08);border:1px solid rgba(35,134,54,0.2);border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12px;color:#3fb950;">📄 {d}</div>', unsafe_allow_html=True)
-            if st.button("🗑️ Clear Index", use_container_width=True):
+                st.markdown(f'<div class="doc-item">📄 {d}</div>', unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🗑️  Clear All Documents", use_container_width=True):
                 rag.clear()
                 st.session_state.doc_messages = []
+                st.success("Index cleared.")
                 st.rerun()
+        else:
+            st.markdown("""
+            <div style="padding:16px;background:rgba(8,12,20,0.5);border:1px dashed rgba(255,255,255,0.06);
+                        border-radius:8px;margin-top:12px;">
+                <p style="font-size:12px;color:#1e293b;margin:0;line-height:1.6;">
+                    📋 <strong style="color:#334155;">Tips:</strong><br>
+                    • Use text-layer PDFs (not scanned)<br>
+                    • 10-K and 10-Q filings work great<br>
+                    • Earnings call transcripts supported
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
+    # ── Q&A panel ─────────────────────────────────────────────
     with col_qa:
-        st.markdown('<p style="font-size:11px;color:#484f58;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:12px;">💬 Ask a Question</p>', unsafe_allow_html=True)
+        st.markdown("""
+        <div class="section-header">
+            <span class="icon">💬</span>
+            <span class="title">Ask Questions</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         if not docs:
             st.markdown("""
-            <div style="background:rgba(22,27,42,0.5);border:1px dashed rgba(255,255,255,0.1);border-radius:14px;padding:40px;text-align:center;">
-                <div style="font-size:32px;margin-bottom:12px;">📄</div>
-                <p style="color:#8b949e;margin:0;">Upload a PDF to start asking questions</p>
+            <div class="empty-state">
+                <div class="icon">📄</div>
+                <div class="title">No documents indexed</div>
+                <div class="sub">Upload a PDF on the left to start asking questions about it</div>
             </div>
             """, unsafe_allow_html=True)
         else:
+            # Suggested questions
+            with st.expander("💡  Suggested questions", expanded=False):
+                _suggestions = [
+                    "What are the primary risk factors disclosed?",
+                    "Summarise the revenue growth over the reported period.",
+                    "What is the company's cash position and liquidity?",
+                    "What are management's key strategic priorities?",
+                    "Were there any material legal proceedings disclosed?",
+                ]
+                for s in _suggestions:
+                    if st.button(f"→ {s}", key=f"sug_doc_{hash(s)}", use_container_width=True):
+                        st.session_state.doc_messages.append({"role":"user","content":s})
+                        st.rerun()
+
+            # Chat history
             for msg in st.session_state.doc_messages:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-            query = st.chat_input("e.g. What are the key risk factors? What was revenue growth?")
+            query = st.chat_input(
+                "Ask about the document…",
+                key="doc_chat_input",
+            )
             if query:
                 st.session_state.doc_messages.append({"role":"user","content":query})
                 with st.chat_message("user"):
@@ -542,7 +1010,9 @@ elif st.session_state.page == "docs":
                 with st.chat_message("assistant"):
                     try:
                         ctx  = rag.retrieve(query)
-                        resp = st.write_stream(claude.stream([{"role":"user","content":query}], extra_context=ctx))
+                        resp = st.write_stream(
+                            claude.stream([{"role":"user","content":query}], extra_context=ctx)
+                        )
                         st.session_state.doc_messages.append({"role":"assistant","content":resp})
                     except IndexNotFoundError:
                         st.error("No documents indexed. Upload a PDF first.")
@@ -563,34 +1033,54 @@ elif st.session_state.page == "chat":
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = []
 
+    # Sidebar quick prompts
     with st.sidebar:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<p style="font-size:11px;color:#484f58;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">💡 Quick Prompts</p>', unsafe_allow_html=True)
-        _SUGGESTIONS = [
+        st.markdown("""
+        <div style="padding:0 8px;">
+            <div class="section-header">
+                <span class="icon">💡</span>
+                <span class="title">Quick Prompts</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        _prompts = [
             "Explain P/E vs EV/EBITDA",
-            "What is an inverted yield curve?",
+            "What signals an inverted yield curve?",
             "How to read a cash flow statement?",
-            "Growth vs value investing",
+            "Growth vs value investing — key differences",
             "What is dollar-cost averaging?",
+            "Explain the Fed funds rate impact on equities",
         ]
-        for s in _SUGGESTIONS:
-            if st.button(f"→ {s}", key=f"sug_{hash(s)}", use_container_width=True):
-                st.session_state.chat_messages.append({"role":"user","content":s})
+        st.markdown('<div style="padding:0 4px;">', unsafe_allow_html=True)
+        for p in _prompts:
+            if st.button(f"→ {p}", key=f"qp_{hash(p)}", use_container_width=True):
+                st.session_state.chat_messages.append({"role":"user","content":p})
                 st.rerun()
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        st.markdown("</div><br>", unsafe_allow_html=True)
+        if st.button("🗑️  Clear Chat", use_container_width=True):
             st.session_state.chat_messages = []
             st.rerun()
 
-    st.markdown('<h1 style="margin-bottom:4px;">💬 AI Financial Chat</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="color:#8b949e;margin-bottom:20px;">Conversational financial intelligence powered by Claude.</p>', unsafe_allow_html=True)
+    # Page header
+    st.markdown("""
+    <div class="section-header" style="margin-bottom:4px;">
+        <span class="icon">💬</span>
+        <span class="title">AI Financial Chat</span>
+        <span class="badge">claude-sonnet-4-6</span>
+    </div>
+    <p style="font-size:13px;color:#334155;margin-bottom:20px;">
+        Ask anything about markets, investment strategies, financial concepts, or economic theory.
+    </p>
+    """, unsafe_allow_html=True)
 
+    # Empty state
     if not st.session_state.chat_messages:
         st.markdown("""
-        <div style="background:rgba(22,27,42,0.4);border:1px dashed rgba(255,255,255,0.08);border-radius:16px;padding:48px;text-align:center;margin:24px 0;">
-            <div style="font-size:40px;margin-bottom:16px;">💬</div>
-            <h3 style="color:#e6edf3;font-size:16px;margin:0 0 8px;">Start a conversation</h3>
-            <p style="color:#8b949e;font-size:13px;margin:0;">Ask about stocks, markets, financial concepts, or investment strategies</p>
+        <div class="empty-state" style="margin-bottom:20px;">
+            <div class="icon">💬</div>
+            <div class="title">Start a conversation</div>
+            <div class="sub">Use the quick prompts in the sidebar or type your own question below</div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -604,12 +1094,15 @@ elif st.session_state.page == "chat":
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        api_msgs = [{"role": m["role"], "content": m["content"]} for m in st.session_state.chat_messages]
+        api_msgs = [{"role":m["role"],"content":m["content"]} for m in st.session_state.chat_messages]
         with st.chat_message("assistant"):
             try:
                 full = st.write_stream(claude.stream(api_msgs))
                 st.session_state.chat_messages.append({"role":"assistant","content":full})
-            except LLMRateLimitError as exc:
-                st.warning(f"⚠️ Rate limited: {exc}")
+            except LLMRateLimitError:
+                st.warning("⚠️ Claude API rate limited. Wait ~60 seconds and try again.")
             except LLMError as exc:
-                st.error(f"Error: {exc}")
+                st.error(
+                    f"**Claude unavailable** — {exc}\n\n"
+                    "Check `ANTHROPIC_API_KEY` in Streamlit Cloud Secrets."
+                )

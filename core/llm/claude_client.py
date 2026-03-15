@@ -53,11 +53,10 @@ You are FinSight, a senior AI financial analyst assistant.
 6. Never recommend specific buy, sell, or hold actions on individual securities.\
 """
 
-# ── Type aliases ──────────────────────────────────────────────
 MessageList = list[dict[str, str]]
 
 
-# ── Prompt builders (pure functions — easy to unit-test) ──────
+# ── Prompt builders ───────────────────────────────────────────
 
 def _build_analysis_prompt(
     ticker: str,
@@ -66,18 +65,6 @@ def _build_analysis_prompt(
     bias: str,
     period: str,
 ) -> str:
-    """Build the structured stock-analysis user message.
-
-    Args:
-        ticker:       Ticker symbol.
-        fundamentals: Subset of :class:`~core.data.stock_client.StockInfo` fields.
-        signals:      Output of :func:`~core.analysis.technical.get_signals`.
-        bias:         Output of :func:`~core.analysis.technical.signal_summary`.
-        period:       Price-history period (e.g. ``"1y"``).
-
-    Returns:
-        Formatted string for the ``"user"`` role.
-    """
     def _fmt(v: Any) -> str:
         if v is None: return "N/A"
         if isinstance(v, float): return f"{v:,.2f}"
@@ -110,15 +97,7 @@ def _build_analysis_prompt(
 
 
 def _inject_context(messages: MessageList, context: str) -> MessageList:
-    """Prepend RAG context to the last user turn (non-mutating).
-
-    Args:
-        messages: Original conversation history.
-        context:  Concatenated retrieval results.
-
-    Returns:
-        New :data:`MessageList` with context prepended to the last user message.
-    """
+    """Prepend RAG context to the last user turn (non-mutating)."""
     msgs = list(messages)
     if msgs and msgs[-1].get("role") == "user":
         msgs[-1] = {
@@ -137,12 +116,11 @@ def _inject_context(messages: MessageList, context: str) -> MessageList:
 class ClaudeClient:
     """Stateless Anthropic Messages API wrapper with retry and streaming.
 
-    Thread-safe (httpx handles connection pooling internally).
-    Instantiate once per Streamlit session and store in session_state.
+    Thread-safe. Instantiate once per process via @st.cache_resource.
 
     Args:
-        api_key: Override the key from ``settings.api_key``.
-        model:   Override the model from ``settings.claude_model``.
+        api_key: Override ``settings.api_key``.
+        model:   Override ``settings.claude_model``.
     """
 
     def __init__(
@@ -154,42 +132,33 @@ class ClaudeClient:
         self._model  = model or settings.claude_model
         log.info("claude_client_init model=%s", self._model)
 
-    # ── Private ───────────────────────────────────────────────
-
-    def _call(self, messages: MessageList, stream: bool = False) -> Any:
-        """Call the Messages API with exponential-backoff retry on 429.
-
-        Args:
-            messages: Conversation history.
-            stream:   Return a streaming context manager when ``True``.
-
-        Returns:
-            :class:`anthropic.types.Message` or streaming context manager.
-
-        Raises:
-            LLMRateLimitError:         HTTP 429 after retries.
-            ContextWindowExceededError: Prompt too long.
-            LLMError:                  Any other API failure.
-        """
-        max_attempts = 4
-        kwargs: dict[str, Any] = dict(
+    def _base_kwargs(self, messages: MessageList) -> dict[str, Any]:
+        """Build the base kwargs dict for both create and stream calls."""
+        return dict(
             model      = self._model,
             max_tokens = settings.max_tokens,
-            temperature= settings.temperature,
             system     = _SYSTEM_PROMPT,
             messages   = messages,
+            # temperature omitted intentionally — defaults to model's optimal value
+            # Passing temperature=0.2 can cause issues on newer model versions
         )
+
+    def _create_with_retry(self, messages: MessageList) -> anthropic.types.Message:
+        """Non-streaming completion with exponential-backoff retry.
+
+        Raises:
+            LLMRateLimitError, ContextWindowExceededError, LLMError.
+        """
+        max_attempts = 4
         for attempt in range(1, max_attempts + 1):
             try:
-                if stream:
-                    return self._client.messages.stream(**kwargs)
-                return self._client.messages.create(**kwargs)
+                return self._client.messages.create(**self._base_kwargs(messages))
 
             except anthropic.RateLimitError as exc:
                 if attempt == max_attempts:
                     raise LLMRateLimitError() from exc
                 wait = 2 ** attempt
-                log.warning("llm_rate_limit attempt=%d/%d wait=%ds", attempt, max_attempts, wait)
+                log.warning("llm_rate_limit attempt=%d wait=%ds", attempt, wait)
                 time.sleep(wait)
 
             except anthropic.BadRequestError as exc:
@@ -205,8 +174,6 @@ class ClaudeClient:
 
         raise LLMError("All retry attempts exhausted")  # pragma: no cover
 
-    # ── Public API ────────────────────────────────────────────
-
     def complete(
         self,
         messages: MessageList,
@@ -215,24 +182,17 @@ class ClaudeClient:
         """Non-streaming completion.
 
         Args:
-            messages:      Conversation in ``[{"role": ..., "content": ...}]`` format.
-            extra_context: RAG context to prepend to the last user turn.
+            messages:      Conversation history.
+            extra_context: RAG context prepended to last user turn.
 
         Returns:
-            Assistant's full response as a plain string.
-
-        Raises:
-            LLMRateLimitError, ContextWindowExceededError, LLMError.
+            Assistant's full response as plain string.
         """
         if extra_context:
             messages = _inject_context(messages, extra_context)
-
-        log.info("llm_complete n_messages=%d", len(messages))
-        resp: anthropic.types.Message = self._call(messages)
-        log.info(
-            "llm_complete_done in=%d out=%d",
-            resp.usage.input_tokens, resp.usage.output_tokens,
-        )
+        log.info("llm_complete n=%d", len(messages))
+        resp = self._create_with_retry(messages)
+        log.info("llm_ok in=%d out=%d", resp.usage.input_tokens, resp.usage.output_tokens)
         return resp.content[0].text
 
     def stream(
@@ -240,14 +200,17 @@ class ClaudeClient:
         messages: MessageList,
         extra_context: str | None = None,
     ) -> Generator[str, None, None]:
-        """Streaming completion — yields text deltas for ``st.write_stream``.
+        """Streaming completion — yields text chunks for ``st.write_stream``.
+
+        Uses ``messages.create(stream=True)`` which is the most compatible
+        approach across all SDK versions (0.20+ through current).
 
         Args:
             messages:      Conversation history.
-            extra_context: RAG context to prepend to the last user turn.
+            extra_context: RAG context prepended to last user turn.
 
         Yields:
-            Incremental text strings from the model.
+            Incremental text strings.
 
         Raises:
             LLMRateLimitError, ContextWindowExceededError, LLMError.
@@ -255,14 +218,46 @@ class ClaudeClient:
         if extra_context:
             messages = _inject_context(messages, extra_context)
 
-        log.info("llm_stream_start n_messages=%d", len(messages))
-        try:
-            with self._call(messages, stream=True) as ctx:
-                yield from ctx.text_stream
-        except (LLMError, LLMRateLimitError, ContextWindowExceededError):
-            raise
-        except anthropic.APIError as exc:
-            raise LLMError(str(exc)) from exc
+        log.info("llm_stream_start n=%d", len(messages))
+
+        max_attempts = 4
+        for attempt in range(1, max_attempts + 1):
+            try:
+                kwargs = self._base_kwargs(messages)
+                kwargs["stream"] = True
+
+                with self._client.messages.create(**kwargs) as stream:
+                    for event in stream:
+                        # Handle both old SDK (MessageStreamEvent) and new SDK
+                        event_type = getattr(event, "type", None)
+                        if event_type == "content_block_delta":
+                            delta = getattr(event, "delta", None)
+                            if delta and getattr(delta, "type", None) == "text_delta":
+                                text = getattr(delta, "text", "")
+                                if text:
+                                    yield text
+                return  # success
+
+            except anthropic.RateLimitError as exc:
+                if attempt == max_attempts:
+                    raise LLMRateLimitError() from exc
+                wait = 2 ** attempt
+                log.warning("llm_stream_rate_limit attempt=%d wait=%ds", attempt, wait)
+                time.sleep(wait)
+
+            except anthropic.BadRequestError as exc:
+                if "prompt is too long" in str(exc).lower():
+                    raise ContextWindowExceededError() from exc
+                raise LLMError(str(exc), status_code=400) from exc
+
+            except anthropic.APIStatusError as exc:
+                raise LLMError(str(exc), status_code=exc.status_code) from exc
+
+            except anthropic.APIConnectionError as exc:
+                raise LLMError(f"Connection error: {exc}") from exc
+
+            except Exception as exc:
+                raise LLMError(f"Unexpected streaming error: {exc}") from exc
 
     def build_analysis_prompt(
         self,
@@ -272,21 +267,7 @@ class ClaudeClient:
         signal_summary: str,
         period: str,
     ) -> MessageList:
-        """Build a stock-analysis :data:`MessageList`.
-
-        Separates prompt construction from call-site logic so prompt
-        engineering can evolve without touching the UI layer.
-
-        Args:
-            ticker:         Ticker symbol.
-            info:           Dict of :class:`~core.data.stock_client.StockInfo`.
-            signals:        Output of :func:`~core.analysis.technical.get_signals`.
-            signal_summary: Output of :func:`~core.analysis.technical.signal_summary`.
-            period:         Price-history period string.
-
-        Returns:
-            Single-element :data:`MessageList` ready for :meth:`stream`.
-        """
+        """Build stock-analysis MessageList for :meth:`stream`."""
         fundamentals = {
             k: info.get(k)
             for k in (
