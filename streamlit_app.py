@@ -1,7 +1,9 @@
 """
-FinSight — Streamlit Cloud Entrypoint
-======================================
-Main file path on Streamlit Cloud: streamlit_app.py
+FinSight — Home Page
+=====================
+Streamlit Cloud: Main file path = streamlit_app.py
+Navigation is handled automatically by Streamlit's native
+multi-page system (pages/ directory).
 """
 
 import sys
@@ -13,23 +15,16 @@ import streamlit as st
 from config.settings import settings
 
 st.set_page_config(
-    page_title=settings.app_title,
+    page_title="FinSight · AI Financial Analysis",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# ── Sidebar ───────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown(f"## 📈 {settings.app_title}")
+    st.markdown("## 📈 FinSight")
     st.caption(f"v{settings.app_version}")
-    st.divider()
-    st.markdown("**Navigate**")
-    if st.button("📊 Stock Analysis", use_container_width=True):
-        st.switch_page("pages/1_Stock_Analysis.py")
-    if st.button("📄 Document Q&A", use_container_width=True):
-        st.switch_page("pages/2_Document_QA.py")
-    if st.button("💬 AI Chat", use_container_width=True):
-        st.switch_page("pages/3_Chat.py")
     st.divider()
     st.caption("⚠️ For informational purposes only. Not investment advice.")
 
@@ -38,7 +33,7 @@ st.title("📈 FinSight")
 st.subheader("AI-Powered Financial Analysis")
 st.markdown(
     "Welcome to **FinSight** — your intelligent financial research assistant. "
-    "Use the sidebar or the buttons below to navigate."
+    "**Use the sidebar on the left to navigate between pages.**"
 )
 st.divider()
 
@@ -47,26 +42,23 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.info(
         "**📊 Stock Analysis**\n\n"
-        "Technical indicators, fundamental metrics, "
-        "and AI-generated analysis for any ticker."
+        "Technical indicators (RSI, MACD, Bollinger Bands), "
+        "fundamental metrics, and AI-generated analysis for any ticker.\n\n"
+        "👈 Click **1 Stock Analysis** in the sidebar"
     )
-    if st.button("Open Stock Analysis →", key="btn_stock", use_container_width=True):
-        st.switch_page("pages/1_Stock_Analysis.py")
 
 with col2:
     st.info(
         "**📄 Document Q&A**\n\n"
         "Upload 10-K, 10-Q, or earnings transcripts "
-        "and ask questions grounded in the text."
+        "and ask questions grounded in the text via RAG.\n\n"
+        "👈 Click **2 Document QA** in the sidebar"
     )
-    if st.button("Open Document Q&A →", key="btn_doc", use_container_width=True):
-        st.switch_page("pages/2_Document_QA.py")
 
 with col3:
     st.info(
         "**💬 AI Chat**\n\n"
         "Conversational financial assistant powered "
-        "by Claude. Ask anything about markets."
+        "by Claude. Ask anything about markets, stocks, or finance.\n\n"
+        "👈 Click **3 Chat** in the sidebar"
     )
-    if st.button("Open AI Chat →", key="btn_chat", use_container_width=True):
-        st.switch_page("pages/3_Chat.py")
