@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Fonts ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ── shadcn/ui Design Tokens ─────────────────────────────── */
+@layer base {
+  :root {
+    /* Map to FinSight dark palette */
+    --background:   220 20% 4%;
+    --foreground:   210 20% 94%;
+    --card:         220 22% 7%;
+    --card-foreground: 210 20% 94%;
+    --popover:      220 22% 7%;
+    --popover-foreground: 210 20% 94%;
+    --primary:      217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary:    220 15% 13%;
+    --secondary-foreground: 210 15% 65%;
+    --muted:        220 15% 13%;
+    --muted-foreground: 215 15% 45%;
+    --accent:       220 15% 13%;
+    --accent-foreground: 210 20% 94%;
+    --destructive:  0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border:       220 13% 12%;
+    --input:        220 13% 12%;
+    --ring:         217 91% 60%;
+    --radius:       0.5rem;
+  }
+
+  /* Force dark everywhere — no light mode */
+  html { color-scheme: dark; }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-canvas text-ink-high;
+    font-family: var(--font-inter, Inter), -apple-system, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Scrollbar ─────────────────────────────────────────── */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.08) transparent;
+  }
+  *::-webkit-scrollbar         { width: 4px; height: 4px; }
+  *::-webkit-scrollbar-track   { background: transparent; }
+  *::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.08); border-radius: 2px; }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+  /* ── Selection ─────────────────────────────────────────── */
+  ::selection {
+    background: rgba(59,130,246,0.3);
+    color: #f0f4f8;
+  }
+}
+
+/* ── Utility classes ──────────────────────────────────────── */
+@layer components {
+  /* Panel glass effect */
+  .glass-panel {
+    @apply bg-surface/80 backdrop-blur-xl border border-surface-border;
+  }
+
+  /* Premium card */
+  .fin-card {
+    @apply bg-canvas-800 border border-surface-border rounded-xl
+           shadow-card hover:shadow-card-hover hover:border-accent/20
+           transition-all duration-200;
+  }
+
+  /* Mono data display */
+  .mono-data {
+    @apply font-mono text-ink-high tabular-nums;
+  }
+
+  /* Accent glow button */
+  .btn-accent {
+    @apply bg-accent/10 border border-accent/25 text-accent-400
+           hover:bg-accent/20 hover:border-accent/50 hover:shadow-accent-sm
+           rounded-lg px-3 py-1.5 text-xs font-semibold tracking-wide
+           transition-all duration-150 cursor-pointer select-none;
+  }
+
+  /* Signal badges */
+  .badge-bull    { @apply bg-bull-dim border border-bull/30 text-bull-text; }
+  .badge-bear    { @apply bg-bear-dim border border-bear/30 text-bear-text; }
+  .badge-caution { @apply bg-caution-dim border border-caution/30 text-caution-text; }
+  .badge-neutral { @apply bg-surface-muted border border-surface-border text-ink-mid; }
+
+  /* Label uppercase */
+  .data-label {
+    @apply text-2xs font-semibold tracking-widest uppercase text-ink-muted;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-lg text-ink-low text-sm
+           font-medium cursor-pointer select-none
+           hover:bg-surface-muted hover:text-ink-mid
+           transition-all duration-150;
+  }
+  .nav-item.active {
+    @apply bg-accent/10 text-accent-400 border border-accent/20;
+  }
+
+  /* Streaming text cursor */
+  .streaming-cursor::after {
+    content: '';
+    @apply inline-block w-0.5 h-4 bg-accent-400 ml-0.5 align-text-bottom;
+    animation: blink-cursor 1s step-end infinite;
+  }
+
+  /* Shimmer loading skeleton */
+  .skeleton {
+    @apply rounded bg-surface-muted;
+    background-image: linear-gradient(
+      90deg,
+      transparent 25%,
+      rgba(255,255,255,0.04) 50%,
+      transparent 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+}
+
+/* ── Recharts overrides ───────────────────────────────────── */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #0c1120 !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+}
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: rgba(255,255,255,0.04) !important;
+}
+.recharts-xAxis .recharts-cartesian-axis-tick-value,
+.recharts-yAxis .recharts-cartesian-axis-tick-value {
+  fill: #475569 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 10px !important;
+}
