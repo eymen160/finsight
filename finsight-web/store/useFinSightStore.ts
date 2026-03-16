@@ -1,243 +1,160 @@
 /**
  * FinSight — Zustand Global Store
- *
- * Manages:
- *  - selectedTicker + period (finance panel)
- *  - stockInfo + signals    (fetched data, cached per ticker)
- *  - chatHistory            (persisted across panel open/close)
- *  - uploadJobs             (active + completed PDF embed jobs)
- *  - indexedDocuments       (list of docs in FAISS)
- *  - UI state               (panel visibility, loading flags)
  */
+import { create } from 'zustand'
+import { persist, devtools } from 'zustand/middleware'
+import type { ChatMessage, SignalValue, OHLCVBar, StockInfo, JobStatus } from '@/types'
 
-import { create } from "zustand";
-import { devtools, persist } from "zustand/middleware";
-import type {
-  ChatMessage,
-  Period,
-  StockInfoResponse,
-  TechnicalSignalsResponse,
-  UploadJob,
-} from "@/types/api";
+// ── Types ─────────────────────────────────────────────────────
 
-// ── State shape ───────────────────────────────────────────────
-
-interface FinSightState {
-  // ── Finance ────────────────────────────────────────────────
-  ticker: string;
-  period: Period;
-  stockInfo:   StockInfoResponse | null;
-  signals:     TechnicalSignalsResponse | null;
-  isLoadingStock: boolean;
-  stockError:  string | null;
-
-  // ── Chat ───────────────────────────────────────────────────
-  chatHistory:   ChatMessage[];
-  isChatStreaming: boolean;
-
-  // ── RAG / Documents ────────────────────────────────────────
-  uploadJobs:        Record<string, UploadJob>;   // keyed by job_id
-  indexedDocuments:  string[];
-  isLoadingDocs:     boolean;
-
-  // ── UI ─────────────────────────────────────────────────────
-  isSidebarOpen:    boolean;
-  isChatPanelOpen:  boolean;
+interface UploadJob {
+  jobId:         string
+  filename:      string
+  status:        JobStatus
+  chunksIndexed: number | null
+  error:         string | null
+  progress:      number
 }
 
-// ── Action shape ──────────────────────────────────────────────
-
-interface FinSightActions {
-  // Finance
-  setTicker:    (ticker: string) => void;
-  setPeriod:    (period: Period) => void;
-  setStockData: (info: StockInfoResponse, signals: TechnicalSignalsResponse) => void;
-  setLoadingStock: (loading: boolean) => void;
-  setStockError:   (error: string | null) => void;
-
-  // Chat
-  addUserMessage:      (content: string) => string;     // returns message id
-  addAssistantMessage: (id: string, content: string) => void;
-  appendToLastMessage: (id: string, chunk: string) => void;
-  finaliseMessage:     (id: string) => void;
-  setChatStreaming:     (streaming: boolean) => void;
-  clearChatHistory:    () => void;
-
-  // RAG
-  upsertUploadJob:    (job: UploadJob) => void;
-  removeUploadJob:    (jobId: string) => void;
-  setIndexedDocuments: (docs: string[]) => void;
-  setLoadingDocs:      (loading: boolean) => void;
-
-  // UI
-  toggleSidebar:   () => void;
-  toggleChatPanel: () => void;
-  setSidebarOpen:  (open: boolean) => void;
-  setChatPanelOpen: (open: boolean) => void;
+interface TickerSlice {
+  symbol:    string
+  name:      string
+  period:    string
+  isLoading: boolean
+  error:     string | null
 }
 
-// ── ID generator ─────────────────────────────────────────────
+interface ChatSlice {
+  messages:    ChatMessage[]
+  isStreaming: boolean
+  streamError: string | null
+}
 
-let _id = 0;
-const genId = () => `msg_${Date.now()}_${_id++}`;
+interface RAGSlice {
+  documents:   string[]
+  activeJob:   UploadJob | null
+  isUploading: boolean
+}
+
+interface SignalSlice {
+  signals:     Record<string, SignalValue>
+  bias:        SignalValue | null
+  latestClose: number | null
+  latestRsi:   number | null
+}
+
+interface UISlice {
+  sidebarOpen:   boolean
+  chatPanelOpen: boolean
+  activeView:    'chart' | 'fundamentals'
+}
+
+interface Actions {
+  setTicker:         (symbol: string) => void
+  setTickerName:     (name: string) => void
+  setPeriod:         (period: string) => void
+  setTickerLoading:  (v: boolean) => void
+  setTickerError:    (e: string | null) => void
+  setSignals:        (signals: Record<string, SignalValue>, bias: SignalValue) => void
+  setLatestMetrics:  (close: number | null, rsi: number | null) => void
+  addUserMessage:    (content: string) => void
+  addAssistantMessage: (content: string) => void
+  appendAssistantDelta: (delta: string) => void
+  setStreaming:      (v: boolean) => void
+  setStreamError:    (e: string | null) => void
+  clearChat:         () => void
+  startUploadJob:    (jobId: string, filename: string) => void
+  updateUploadJob:   (update: Partial<UploadJob>) => void
+  completeUploadJob: (chunks: number) => void
+  failUploadJob:     (error: string) => void
+  clearUploadJob:    () => void
+  setDocuments:      (docs: string[]) => void
+  toggleSidebar:     () => void
+  toggleChatPanel:   () => void
+  setActiveView:     (v: UISlice['activeView']) => void
+}
+
+interface Store extends UISlice {
+  ticker:  TickerSlice
+  chat:    ChatSlice
+  rag:     RAGSlice
+  signals: SignalSlice
+  actions: Actions
+}
 
 // ── Store ─────────────────────────────────────────────────────
 
-export const useFinSightStore = create<FinSightState & FinSightActions>()(
+export const useFinSightStore = create<Store>()(
   devtools(
     persist(
       (set, get) => ({
-        // ── Initial state ─────────────────────────────────────
-        ticker:          "AAPL",
-        period:          "1y",
-        stockInfo:       null,
-        signals:         null,
-        isLoadingStock:  false,
-        stockError:      null,
+        sidebarOpen:   true,
+        chatPanelOpen: true,
+        activeView:    'chart',
+        ticker:  { symbol: 'AAPL', name: 'Apple Inc.', period: '1y', isLoading: false, error: null },
+        chat:    { messages: [], isStreaming: false, streamError: null },
+        rag:     { documents: [], activeJob: null, isUploading: false },
+        signals: { signals: {}, bias: null, latestClose: null, latestRsi: null },
 
-        chatHistory:     [],
-        isChatStreaming: false,
+        actions: {
+          setTicker:        (symbol) => set(s => ({ ticker: { ...s.ticker, symbol: symbol.toUpperCase(), error: null } })),
+          setTickerName:    (name)   => set(s => ({ ticker: { ...s.ticker, name } })),
+          setPeriod:        (period) => set(s => ({ ticker: { ...s.ticker, period } })),
+          setTickerLoading: (v)      => set(s => ({ ticker: { ...s.ticker, isLoading: v } })),
+          setTickerError:   (e)      => set(s => ({ ticker: { ...s.ticker, error: e, isLoading: false } })),
 
-        uploadJobs:       {},
-        indexedDocuments: [],
-        isLoadingDocs:    false,
+          setSignals:       (signals, bias) => set(s => ({ signals: { ...s.signals, signals, bias } })),
+          setLatestMetrics: (c, r)          => set(s => ({ signals: { ...s.signals, latestClose: c, latestRsi: r } })),
 
-        isSidebarOpen:   true,
-        isChatPanelOpen: true,
-
-        // ── Finance actions ───────────────────────────────────
-        setTicker: (ticker) =>
-          set({ ticker: ticker.toUpperCase().trim(), stockInfo: null, signals: null, stockError: null }),
-
-        setPeriod: (period) => set({ period }),
-
-        setStockData: (info, signals) =>
-          set({ stockInfo: info, signals, isLoadingStock: false, stockError: null }),
-
-        setLoadingStock: (loading) => set({ isLoadingStock: loading }),
-        setStockError:   (error)   => set({ stockError: error, isLoadingStock: false }),
-
-        // ── Chat actions ──────────────────────────────────────
-        addUserMessage: (content) => {
-          const id = genId();
-          set((s) => ({
-            chatHistory: [
-              ...s.chatHistory,
-              { id, role: "user", content, timestamp: Date.now() },
-            ],
-          }));
-          return id;
-        },
-
-        addAssistantMessage: (id, content) =>
-          set((s) => ({
-            chatHistory: [
-              ...s.chatHistory,
-              { id, role: "assistant", content, isStreaming: true, timestamp: Date.now() },
-            ],
-          })),
-
-        appendToLastMessage: (id, chunk) =>
-          set((s) => ({
-            chatHistory: s.chatHistory.map((m) =>
-              m.id === id ? { ...m, content: m.content + chunk } : m
-            ),
-          })),
-
-        finaliseMessage: (id) =>
-          set((s) => ({
-            chatHistory: s.chatHistory.map((m) =>
-              m.id === id ? { ...m, isStreaming: false } : m
-            ),
-          })),
-
-        setChatStreaming: (streaming) => set({ isChatStreaming: streaming }),
-
-        clearChatHistory: () => set({ chatHistory: [] }),
-
-        // ── RAG actions ───────────────────────────────────────
-        upsertUploadJob: (job) =>
-          set((s) => ({ uploadJobs: { ...s.uploadJobs, [job.jobId]: job } })),
-
-        removeUploadJob: (jobId) =>
-          set((s) => {
-            const jobs = { ...s.uploadJobs };
-            delete jobs[jobId];
-            return { uploadJobs: jobs };
+          addUserMessage:    (content) => set(s => ({ chat: { ...s.chat, messages: [...s.chat.messages, { role: 'user', content }] } })),
+          addAssistantMessage: (content) => set(s => ({ chat: { ...s.chat, messages: [...s.chat.messages, { role: 'assistant', content }] } })),
+          appendAssistantDelta: (delta) => set(s => {
+            const msgs = [...s.chat.messages]
+            const last = msgs[msgs.length - 1]
+            if (last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, content: last.content + delta }
+            return { chat: { ...s.chat, messages: msgs } }
           }),
+          setStreaming:   (v) => set(s => ({ chat: { ...s.chat, isStreaming: v } })),
+          setStreamError: (e) => set(s => ({ chat: { ...s.chat, streamError: e, isStreaming: false } })),
+          clearChat:      ()  => set({ chat: { messages: [], isStreaming: false, streamError: null } }),
 
-        setIndexedDocuments: (docs) => set({ indexedDocuments: docs }),
-        setLoadingDocs:      (loading) => set({ isLoadingDocs: loading }),
+          startUploadJob:    (jobId, filename) => set(s => ({ rag: { ...s.rag, isUploading: true, activeJob: { jobId, filename, status: 'processing', chunksIndexed: null, error: null, progress: 5 } } })),
+          updateUploadJob:   (u) => set(s => ({ rag: { ...s.rag, activeJob: s.rag.activeJob ? { ...s.rag.activeJob, ...u } : null } })),
+          completeUploadJob: (chunks) => set(s => ({ rag: { ...s.rag, isUploading: false, activeJob: s.rag.activeJob ? { ...s.rag.activeJob, status: 'complete', chunksIndexed: chunks, progress: 100 } : null } })),
+          failUploadJob:     (error) => set(s => ({ rag: { ...s.rag, isUploading: false, activeJob: s.rag.activeJob ? { ...s.rag.activeJob, status: 'failed', error, progress: 0 } : null } })),
+          clearUploadJob:    ()  => set(s => ({ rag: { ...s.rag, activeJob: null, isUploading: false } })),
+          setDocuments:      (docs) => set(s => ({ rag: { ...s.rag, documents: docs } })),
 
-        // ── UI actions ────────────────────────────────────────
-        toggleSidebar:   () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen })),
-        toggleChatPanel: () => set((s) => ({ isChatPanelOpen: !s.isChatPanelOpen })),
-        setSidebarOpen:  (open) => set({ isSidebarOpen: open }),
-        setChatPanelOpen: (open) => set({ isChatPanelOpen: open }),
+          toggleSidebar:   () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
+          toggleChatPanel: () => set(s => ({ chatPanelOpen: !s.chatPanelOpen })),
+          setActiveView:   (v) => set({ activeView: v }),
+        },
       }),
       {
-        name: "finsight-store",
-        // Only persist user preferences + chat history
+        name: 'finsight-store',
         partialize: (s) => ({
-          ticker:          s.ticker,
-          period:          s.period,
-          chatHistory:     s.chatHistory.filter((m) => !m.isStreaming),
-          indexedDocuments: s.indexedDocuments,
-          isSidebarOpen:   s.isSidebarOpen,
-          isChatPanelOpen: s.isChatPanelOpen,
+          sidebarOpen: s.sidebarOpen,
+          chatPanelOpen: s.chatPanelOpen,
+          ticker: { symbol: s.ticker.symbol, period: s.ticker.period, name: s.ticker.name },
+          chat: { messages: s.chat.messages.slice(-30) },
+          rag: { documents: s.rag.documents },
         }),
-      }
+      },
     ),
-    { name: "FinSight" }
-  )
-);
+    { name: 'FinSight' },
+  ),
+)
 
-// ── Selector hooks (prevent unnecessary re-renders) ───────────
+// ── Selectors ─────────────────────────────────────────────────
+export const selectTicker  = (s: Store) => s.ticker
+export const selectChat    = (s: Store) => s.chat
+export const selectRAG     = (s: Store) => s.rag
+export const selectSignals = (s: Store) => s.signals
+export const selectUI      = (s: Store) => ({ sidebarOpen: s.sidebarOpen, chatPanelOpen: s.chatPanelOpen, activeView: s.activeView })
+export const selectActions = (s: Store) => s.actions
 
-export const useTickerState = () =>
-  useFinSightStore((s) => ({
-    ticker:         s.ticker,
-    period:         s.period,
-    stockInfo:      s.stockInfo,
-    signals:        s.signals,
-    isLoading:      s.isLoadingStock,
-    error:          s.stockError,
-    setTicker:      s.setTicker,
-    setPeriod:      s.setPeriod,
-    setStockData:   s.setStockData,
-    setLoading:     s.setLoadingStock,
-    setError:       s.setStockError,
-  }));
-
-export const useChatState = () =>
-  useFinSightStore((s) => ({
-    chatHistory:         s.chatHistory,
-    isChatStreaming:     s.isChatStreaming,
-    addUserMessage:      s.addUserMessage,
-    addAssistantMessage: s.addAssistantMessage,
-    appendToLastMessage: s.appendToLastMessage,
-    finaliseMessage:     s.finaliseMessage,
-    setChatStreaming:     s.setChatStreaming,
-    clearChatHistory:    s.clearChatHistory,
-  }));
-
-export const useRAGState = () =>
-  useFinSightStore((s) => ({
-    uploadJobs:       s.uploadJobs,
-    indexedDocuments: s.indexedDocuments,
-    isLoadingDocs:    s.isLoadingDocs,
-    upsertUploadJob:  s.upsertUploadJob,
-    removeUploadJob:  s.removeUploadJob,
-    setIndexedDocuments: s.setIndexedDocuments,
-    setLoadingDocs:   s.setLoadingDocs,
-  }));
-
-export const useUIState = () =>
-  useFinSightStore((s) => ({
-    isSidebarOpen:    s.isSidebarOpen,
-    isChatPanelOpen:  s.isChatPanelOpen,
-    toggleSidebar:    s.toggleSidebar,
-    toggleChatPanel:  s.toggleChatPanel,
-    setSidebarOpen:   s.setSidebarOpen,
-    setChatPanelOpen: s.setChatPanelOpen,
-  }));
+// Legacy hooks for compatibility
+export const useTickerState = () => useFinSightStore(selectTicker)
+export const useChatState   = () => useFinSightStore(selectChat)
+export const useRAGState    = () => useFinSightStore(selectRAG)
+export const useUIState     = () => useFinSightStore(selectUI)
