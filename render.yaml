@@ -38,7 +38,7 @@ services:
 
       # ── CORS — Vercel deploy sonrası gerçek URL ile güncelle
       - key: CORS_ALLOWED_ORIGINS
-        value: https://finsight-eymen160.vercel.app
+        value: https://finsight-web-eymen160.vercel.app
 
       # ── RAG ────────────────────────────────────────────────
       - key: FAISS_INDEX_PATH
