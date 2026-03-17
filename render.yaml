@@ -1,7 +1,3 @@
-# FinSight — Render Blueprint
-# Tek tıkla deploy: render.com/deploy → bu repo'yu seç
-# Render bu dosyayı otomatik okur ve servisi yapılandırır.
-
 services:
   - type: web
     name: finsight-api
@@ -9,38 +5,25 @@ services:
     dockerfilePath: ./Dockerfile
     region: oregon
     plan: free
-
-    # Health check — Render bu endpoint'e ping atar
     healthCheckPath: /health
-
-    # Auto-deploy: main branch'e push olunca otomatik deploy
     autoDeploy: true
     branch: main
 
     envVars:
-      # ── Required — Render Dashboard'dan manuel ekle ──────────
       - key: ANTHROPIC_API_KEY
-        sync: false              # "sync:false" = Dashboard'dan elle girilecek
-
-      # ── App config ─────────────────────────────────────────
+        sync: false
       - key: APP_ENV
         value: production
       - key: LOG_LEVEL
         value: WARNING
       - key: APP_VERSION
         value: "0.1.0"
-
-      # ── Claude ─────────────────────────────────────────────
       - key: CLAUDE_MODEL
-        value: claude-sonnet-4-6
+        value: claude-sonnet-4-5        # ← FIXED: was claude-sonnet-4-6 (invalid)
       - key: MAX_TOKENS
-        value: "2048"
-
-      # ── CORS — Vercel deploy sonrası gerçek URL ile güncelle
+        value: "1024"                   # ← FIXED: was 2048, 1024 is 2x faster
       - key: CORS_ALLOWED_ORIGINS
-        value: https://finsight-web-eymen160.vercel.app
-
-      # ── RAG ────────────────────────────────────────────────
+        value: https://finsight-topaz-beta.vercel.app
       - key: FAISS_INDEX_PATH
         value: /tmp/finsight_faiss
       - key: CHUNK_SIZE
@@ -49,11 +32,9 @@ services:
         value: "100"
       - key: TOP_K_RESULTS
         value: "5"
-
-      # ── yfinance ───────────────────────────────────────────
       - key: YFINANCE_CACHE_TTL
         value: "600"
       - key: YFINANCE_MAX_RETRIES
         value: "3"
       - key: YFINANCE_TIMEOUT
-        value: "15.0"
+        value: "10.0"
