@@ -29,8 +29,14 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# ── Ensure project root is on path when running from /backend ──
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# ── Ensure both /app and /app/backend are on sys.path ──────────
+# In Docker: WORKDIR=/app, backend/ is copied to /app/backend/
+# "from api.routers" needs to find /app/backend/api/
+# "from core.*" needs to find /app/core/
+_this_dir    = os.path.dirname(os.path.abspath(__file__))  # /app/backend
+_project_dir = os.path.dirname(_this_dir)                  # /app
+sys.path.insert(0, _this_dir)    # makes "from api.*" work (finds /app/backend/api/)
+sys.path.insert(0, _project_dir) # makes "from core.*" work (finds /app/core/)
 
 from api.routers import chat, finance, rag
 from api.schemas.responses import ErrorDetail, HealthResponse
