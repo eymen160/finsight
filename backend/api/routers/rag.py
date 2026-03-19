@@ -236,14 +236,15 @@ async def list_documents(
 
 @router.delete(
     "/index",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
     summary="Wipe the FAISS index and all indexed documents",
 )
 async def clear_index(
     rag: RAGPipelineDep,
     log: LoggerDep,
-) -> None:
+) -> dict:
     """Delete the FAISS index and all persisted chunk data."""
     log.warning("DELETE /index — wiping FAISS index")
     import asyncio
     await asyncio.to_thread(rag.clear)
+    return {"status": "ok", "message": "Index cleared"}
