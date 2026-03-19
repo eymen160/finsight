@@ -8,7 +8,6 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     branch: main
-
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -16,12 +15,10 @@ services:
         value: production
       - key: LOG_LEVEL
         value: WARNING
-      - key: APP_VERSION
-        value: "0.1.0"
       - key: CLAUDE_MODEL
-        value: claude-sonnet-4-5        # ← FIXED: was claude-sonnet-4-6 (invalid)
+        value: claude-sonnet-4-5
       - key: MAX_TOKENS
-        value: "1024"                   # ← FIXED: was 2048, 1024 is 2x faster
+        value: "1024"
       - key: CORS_ALLOWED_ORIGINS
         value: https://finsight-topaz-beta.vercel.app
       - key: FAISS_INDEX_PATH
